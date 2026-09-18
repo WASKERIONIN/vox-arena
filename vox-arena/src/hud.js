@@ -22,7 +22,9 @@ export class HUD {
       'style-event', 'banner', 'banner-main', 'banner-sub', 'countdown', 'hint', 'fps',
       'damage-flash', 'lowhp', 'vignette', 'menu', 'settings', 'help', 'pause', 'death',
       'death-stats', 'loading', 'fallback-note', 'settings-rows', 'fade',
-      'map-desc', 'map-catacombs', 'map-arena'
+      'map-desc', 'map-arena', 'map-catacombs',
+      'mode-desc', 'mode-waves', 'mode-sandbox',
+      'sandbox-panel', 'sb-minion', 'sb-rogue', 'sb-warrior', 'sb-mage', 'sb-ai-toggle', 'sb-clear'
     ]) {
       this.els[id] = $(id);
     }
@@ -33,11 +35,14 @@ export class HUD {
     this._hmT = null;
     this._eventT = null;
 
-    this.selectedMap = 'catacombs'; // По умолчанию новая карта Катакомб
+    this.selectedMap = 'arena'; // По умолчанию классическая арена
+    this.gameMode = 'waves'; // 'waves' | 'sandbox'
+    this.aiEnabledInSandbox = false; // По умолчанию в песочнице ИИ выключен для превью
 
     this._buildSettings();
     this._bind();
-    this.selectMap('catacombs');
+    this.selectMap('arena');
+    this.selectMode('waves');
   }
 
   selectMap(mapId) {
@@ -45,7 +50,7 @@ export class HUD {
     this.selectedMap = mapId;
 
     document.querySelectorAll('.map-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.map === mapId);
+      btn.classList.toggle('active-tab', btn.dataset.map === mapId);
     });
 
     if (this.els['map-desc']) {
@@ -54,6 +59,40 @@ export class HUD {
 
     if (this.onMapSelect) {
       this.onMapSelect(mapId);
+    }
+  }
+
+  selectMode(mode) {
+    this.gameMode = mode;
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active-tab', btn.dataset.mode === mode);
+    });
+
+    if (this.els['mode-desc']) {
+      this.els['mode-desc'].textContent = mode === 'waves'
+        ? 'Классическое выживание против нарастающих волн тварей.'
+        : 'Свободный спавн любых тварей в центре арены с вкл/выкл ИИ для проверки анимаций и анатомии.';
+    }
+
+    if (this.onModeSelect) {
+      this.onModeSelect(mode);
+    }
+  }
+
+  setSandboxAIToggle(enabled) {
+    this.aiEnabledInSandbox = enabled;
+    const btn = this.els['sb-ai-toggle'];
+    if (btn) {
+      if (enabled) {
+        btn.innerHTML = '<kbd>9</kbd> ИИ: ВКЛ (БОЕВОЙ)';
+        btn.style.color = '#ff5544';
+        btn.style.borderColor = '#991111';
+      } else {
+        btn.innerHTML = '<kbd>9</kbd> ИИ: ВЫКЛ (МАНЕКЕН)';
+        btn.style.color = '#77ff88';
+        btn.style.borderColor = '#387038';
+      }
     }
   }
 
@@ -106,10 +145,10 @@ export class HUD {
       if (el) el.addEventListener('click', e => { e.stopPropagation(); fn(); });
     };
 
-    click('btn-play', () => this.onPlay && this.onPlay(this.selectedMap));
+    click('btn-play', () => this.onPlay && this.onPlay(this.selectedMap, this.gameMode));
     click('btn-resume', () => this.onResume && this.onResume());
     click('btn-quit', () => this.onQuit && this.onQuit());
-    click('btn-restart', () => this.onRestart && this.onRestart(this.selectedMap));
+    click('btn-restart', () => this.onRestart && this.onRestart(this.selectedMap, this.gameMode));
     click('btn-death-menu', () => this.onQuit && this.onQuit());
     click('btn-settings', () => this.screen('settings'));
     click('btn-pause-settings', () => this.screen('settings'));
@@ -127,6 +166,14 @@ export class HUD {
       } catch (e) { }
     });
 
+    // Селектор режима игры
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        this.selectMode(btn.dataset.mode);
+      });
+    });
+
     // Селектор карт
     document.querySelectorAll('.map-btn').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -134,6 +181,14 @@ export class HUD {
         this.selectMap(btn.dataset.map);
       });
     });
+
+    // Кнопки песочницы
+    click('sb-minion', () => this.onSpawn && this.onSpawn('minion'));
+    click('sb-rogue', () => this.onSpawn && this.onSpawn('rogue'));
+    click('sb-warrior', () => this.onSpawn && this.onSpawn('warrior'));
+    click('sb-mage', () => this.onSpawn && this.onSpawn('mage'));
+    click('sb-ai-toggle', () => this.onToggleAI && this.onToggleAI());
+    click('sb-clear', () => this.onClearEnemies && this.onClearEnemies());
 
     document.querySelectorAll('.preset').forEach(b => b.addEventListener('click', () => {
       const p = PRESETS[+b.dataset.q];
@@ -216,9 +271,17 @@ export class HUD {
   }
 
   // ---- в бою ----
-  showGame(on) {
+  showGame(on, mode = 'waves') {
     if (this.els.hud) this.els.hud.classList.toggle('hidden', !on);
     if (this.els.vignette) this.els.vignette.classList.toggle('hidden', !on);
+    if (this.els['sandbox-panel']) {
+      this.els['sandbox-panel'].classList.toggle('hidden', !on || mode !== 'sandbox');
+    }
+    if (mode === 'sandbox') {
+      if (this.els['wave-label']) this.els['wave-label'].textContent = 'ПЕСОЧНИЦА';
+      if (this.els['kills-label']) this.els['kills-label'].textContent = 'БЕСТИАРИЙ';
+      if (this.els['score-label']) this.els['score-label'].textContent = 'ПРЕВЬЮ';
+    }
   }
 
   setHP(hp, max) {

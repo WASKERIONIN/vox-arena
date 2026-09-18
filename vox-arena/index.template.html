@@ -80,6 +80,10 @@
 
   #fps{position:absolute;right:8px;top:6px;font-size:11px;color:#7f7;padding:2px 6px;background:rgba(0,0,0,.4);}
 
+  /* Панель песочницы / превью тварей */
+  #sandbox-panel{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(14,8,10,0.92);border:1px solid #6b2015;padding:8px 12px;display:flex;gap:6px;align-items:center;pointer-events:auto;z-index:8;border-radius:3px;box-shadow:0 0 18px rgba(0,0,0,0.85);max-width:96vw;overflow-x:auto;}
+  .sb-btn{font-size:11px;padding:6px 10px;letter-spacing:1px;white-space:nowrap;}
+
   #damage-flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 40%,rgba(255,10,5,.55) 100%);opacity:0;transition:opacity .35s;z-index:6;}
   #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 50%,rgba(0,0,0,.65) 100%);z-index:4;}
   #lowhp{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 55%,rgba(255,0,0,.28) 100%);opacity:0;z-index:4;}
@@ -91,7 +95,7 @@
     text-shadow:0 0 30px rgba(255,36,24,.75),4px 4px 0 var(--red-dark);}
   .title em{font-style:normal;color:var(--red);}
   .subtitle{margin-top:10px;font-size:13px;letter-spacing:6px;color:#c9b8a0;}
-  .menu-btns{margin-top:28px;display:flex;flex-direction:column;gap:10px;min-width:340px;max-width:92vw;}
+  .menu-btns{margin-top:22px;display:flex;flex-direction:column;gap:10px;min-width:350px;max-width:92vw;}
   .btn{pointer-events:auto;cursor:pointer;border:1px solid #6b2015;background:linear-gradient(180deg,#1c0d0b,#120709);
     color:var(--bone);font-size:17px;font-weight:700;letter-spacing:4px;padding:12px 28px;text-align:center;
     transition:all .08s;text-transform:uppercase;font-family:inherit;}
@@ -99,7 +103,7 @@
   .btn.primary{background:linear-gradient(180deg,#a01108,#6f0b05);border-color:var(--red);color:#fff;font-size:20px;padding:14px 28px;}
   .btn.primary:hover{background:var(--red);}
   .btn.small{font-size:13px;padding:8px 16px;letter-spacing:2px;}
-  .map-btn.active{background:var(--red) !important;color:#fff !important;border-color:var(--red) !important;box-shadow:0 0 12px rgba(255,36,24,.6);}
+  .btn.active-tab{background:var(--red) !important;color:#fff !important;border-color:var(--red) !important;box-shadow:0 0 12px rgba(255,36,24,.6);}
   .footnote{position:absolute;bottom:16px;font-size:11px;letter-spacing:1px;color:rgba(201,184,160,.5);}
 
   /* ---------- Настройки ---------- */
@@ -140,6 +144,18 @@
     <div id="wave-label">ВОЛНА 1</div>
     <div id="kills-label">УБИТО: 0</div>
     <div id="score-label">ОЧКИ: 0</div>
+  </div>
+
+  <!-- Панель управления песочницей и превью монстров -->
+  <div id="sandbox-panel" class="hidden">
+    <span style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--amber);margin-right:2px;">ТЕСТ:</span>
+    <button class="btn small sb-btn" id="sb-minion" title="Горячая клавиша: 5"><kbd>5</kbd> СКОРОХОД</button>
+    <button class="btn small sb-btn" id="sb-rogue" title="Горячая клавиша: 6"><kbd>6</kbd> РЕЗАК</button>
+    <button class="btn small sb-btn" id="sb-warrior" title="Горячая клавиша: 7"><kbd>7</kbd> КЛЕЩ</button>
+    <button class="btn small sb-btn" id="sb-mage" title="Горячая клавиша: 8"><kbd>8</kbd> ПЛОД</button>
+    <div style="width:1px;height:20px;background:#51190f;margin:0 2px;"></div>
+    <button class="btn small sb-btn" id="sb-ai-toggle" style="color:#77ff88;border-color:#387038;" title="Горячая клавиша: 9"><kbd>9</kbd> ИИ: ВЫКЛ (МАНЕКЕН)</button>
+    <button class="btn small sb-btn" id="sb-clear" style="border-color:#a01108;" title="Горячая клавиша: 0"><kbd>0</kbd> ОЧИСТИТЬ</button>
   </div>
 
   <div id="style">
@@ -190,18 +206,31 @@
   <div class="title">ВОКСЕЛЬНАЯ <em>БОЙНЯ</em></div>
   <div class="subtitle">ТАКТИЧЕСКИЙ ХОРРОР-ШУТЕР · ПРОТОТИП 0.2</div>
   <div class="menu-btns">
-    <div id="map-selector-box" style="background:rgba(0,0,0,0.45);border:1px solid #51190f;padding:10px 14px;border-radius:2px;text-align:center;">
-      <div style="font-size:11px;letter-spacing:3px;color:#c9b8a0;margin-bottom:8px;font-weight:700;">ЛОКАЦИЯ ОПЕРАЦИИ:</div>
+    <!-- Выбор режима игры -->
+    <div style="background:rgba(0,0,0,0.5);border:1px solid #51190f;padding:10px 14px;border-radius:2px;text-align:center;">
+      <div style="font-size:11px;letter-spacing:3px;color:#c9b8a0;margin-bottom:8px;font-weight:700;">РЕЖИМ ИГРЫ:</div>
       <div style="display:flex;gap:8px;">
-        <button class="btn small map-btn active" id="map-catacombs" data-map="catacombs" style="flex:1;">КАТАКОМБЫ</button>
-        <button class="btn small map-btn" id="map-arena" data-map="arena" style="flex:1;">КОЛИЗЕЙ</button>
+        <button class="btn small mode-btn active-tab" id="mode-waves" data-mode="waves" style="flex:1;">💀 БОЙ / ВОЛНЫ</button>
+        <button class="btn small mode-btn" id="mode-sandbox" data-mode="sandbox" style="flex:1;">🔬 ПЕСОЧНИЦА / ПРЕВЬЮ</button>
       </div>
-      <div id="map-desc" style="font-size:11px;color:#a89985;margin-top:8px;line-height:1.4;">
-        Ветвящиеся коридоры, лаборатория, хранилище и обходные пути для тактического ИИ.
+      <div id="mode-desc" style="font-size:11px;color:#a89985;margin-top:8px;line-height:1.4;">
+        Классическое выживание против нарастающих волн тварей.
       </div>
     </div>
 
-    <button class="btn primary" id="btn-play">В БОЙ</button>
+    <!-- Выбор карты -->
+    <div style="background:rgba(0,0,0,0.4);border:1px solid #51190f;padding:10px 14px;border-radius:2px;text-align:center;">
+      <div style="font-size:11px;letter-spacing:3px;color:#c9b8a0;margin-bottom:8px;font-weight:700;">ЛОКАЦИЯ:</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn small map-btn active-tab" id="map-arena" data-map="arena" style="flex:1;">КОЛИЗЕЙ</button>
+        <button class="btn small map-btn" id="map-catacombs" data-map="catacombs" style="flex:1;">КАТАКОМБЫ</button>
+      </div>
+      <div id="map-desc" style="font-size:11px;color:#a89985;margin-top:8px;line-height:1.4;">
+        Классический открытый колизей с платформой, колоннами и порталами.
+      </div>
+    </div>
+
+    <button class="btn primary" id="btn-play">НАЧАТЬ</button>
     <button class="btn" id="btn-settings">НАСТРОЙКИ</button>
     <button class="btn" id="btn-help">УПРАВЛЕНИЕ</button>
   </div>
@@ -236,12 +265,14 @@
       <div><kbd>T</kbd> / <kbd>L</kbd> — тактический фонарь</div>
       <div><kbd>R</kbd> — перезарядка</div>
       <div><kbd>SHIFT</kbd> — спринт · <kbd>ПРОБЕЛ</kbd> — прыжок</div>
+      <div><kbd>5</kbd> / <kbd>6</kbd> / <kbd>7</kbd> / <kbd>8</kbd> — спавн тварей (песочница)</div>
+      <div><kbd>9</kbd> — переключить ИИ (Вкл / Выкл)</div>
+      <div><kbd>0</kbd> — очистить арену</div>
     </div>
     <p style="font-size:13px;line-height:1.7;color:#c9b8a0;margin-top:14px">
       <b>ОБРЕЗ «ПАЛАЧ»:</b> Выпускает смертоносный веер картечи. В упор сбивает с ног и отрывает конечности. Переломная перезарядка.<br>
       <b>БОЕВОЙ ПИНОК:</b> Опрокидывает монстров на пол, прерывает атаки и швыряет отстреленные черепа и конечности как снаряды.<br>
-      <b>ТАКТИЧЕСКИЙ ИИ:</b> Монстры окружают игрока веером, Скороходы зигзагом уклоняются от прицела, а Резаки заходят во фланг через боковые коридоры.<br>
-      <b>3D ФЛЮИДНАЯ КРОВЬ:</b> Артериальные фонтаны, физические брызги с учетом стен и динамические расширяющиеся лужи на полу.
+      <b>ПЕСОЧНИЦА / ПРЕВЬЮ АНИМАЦИЙ:</b> Спавните любых тварей с выключенным интеллектом (<kbd>9</kbd>), подходите вплотную, изучайте анимации, бейте пинком и отстреливайте отдельные конечности.
     </p>
     <div style="margin-top:14px"><button class="btn small" id="btn-help-close">НАЗАД</button></div>
   </div>

@@ -32,7 +32,8 @@ const fogObj = new THREE.Fog(0x12080a, 8, 85);
 scene.fog = settings.fog ? fogObj : null;
 
 const T = makeTextures();
-let currentMapId = 'catacombs';
+let currentMapId = 'arena'; // По умолчанию возвращаемся на Колизей
+let currentGameMode = 'waves'; // 'waves' | 'sandbox'
 let arena = buildArena(scene, T, currentMapId);
 const sfx = new AudioSys();
 const fx = new FX(scene, T);
@@ -97,6 +98,13 @@ player.onHit = ({ head, killed, hitZone, isCorpse }) => {
 };
 player.onReload = () => { };
 player.onDead = () => {
+  if (currentGameMode === 'sandbox') {
+    // В песочнице мгновенно лечим игрока чтобы не прерывать тестирование
+    player.hp = player.maxHp;
+    hud.setHP(player.hp, player.maxHp);
+    hud.styleEvent('ВОССТАНОВЛЕНИЕ ТЕСТОВОЙ БРОНИ');
+    return;
+  }
   state = 'dead';
   input.fire = false;
   deathT = 0;
@@ -141,6 +149,42 @@ function setMap(mapId) {
   if (arena) arena.clearMap();
   arena = buildArena(scene, T, currentMapId);
   waves.setArena(arena);
+}
+
+// ============================== СПАВНЕР И ПЕСОЧНИЦА ==============================
+function spawnSandboxMonster(typeName) {
+  if (state !== 'playing') return;
+  // Спавним монстра на расстоянии 5.5 метров прямо по направлению взгляда игрока
+  const dist = 5.5;
+  const yaw = player.yaw;
+  const wx = player.pos.x - Math.sin(yaw) * dist;
+  const wz = player.pos.z - Math.cos(yaw) * dist;
+  const aiDisabled = !hud.aiEnabledInSandbox;
+
+  const e = enemies.spawn(typeName, wx, wz, 1, aiDisabled);
+  if (e) {
+    fx.portal(new THREE.Vector3(wx, 0, wz));
+    sfx.pickup();
+    const modeStr = aiDisabled ? 'МАНЕКЕН (ИИ ВЫКЛ)' : 'БОЕВОЙ (ИИ ВКЛ)';
+    hud.styleEvent(`СПАВН: ${e.T.label} [${modeStr}]`);
+  }
+}
+
+function toggleSandboxAI() {
+  if (state !== 'playing') return;
+  const next = !hud.aiEnabledInSandbox;
+  hud.setSandboxAIToggle(next);
+  enemies.setAllAI(next);
+  sfx.pickup();
+  hud.styleEvent(next ? 'ИИ ВСЕХ ВРАГОВ: ВКЛ (БОЙ)' : 'ИИ ВСЕХ ВРАГОВ: ВЫКЛ (МАНЕКЕН)');
+}
+
+function clearSandbox() {
+  if (state !== 'playing') return;
+  enemies.clear();
+  fx.clear();
+  sfx.pickup();
+  hud.styleEvent('АРЕНА ПОЛНОСТЬЮ ОЧИЩЕНА');
 }
 
 // ============================== ввод ==============================
@@ -211,6 +255,16 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && fallbackLook) {
     if (state === 'playing') pauseGame(); else if (state === 'paused') resumeGame();
   }
+
+  // Горячие клавиши спавнера и песочницы
+  if (state === 'playing') {
+    if (e.code === 'Digit5' || e.code === 'Numpad5') spawnSandboxMonster('minion');
+    if (e.code === 'Digit6' || e.code === 'Numpad6') spawnSandboxMonster('rogue');
+    if (e.code === 'Digit7' || e.code === 'Numpad7') spawnSandboxMonster('warrior');
+    if (e.code === 'Digit8' || e.code === 'Numpad8') spawnSandboxMonster('mage');
+    if (e.code === 'Digit9' || e.code === 'Numpad9') toggleSandboxAI();
+    if (e.code === 'Digit0' || e.code === 'Numpad0') clearSandbox();
+  }
 });
 window.addEventListener('keyup', e => {
   input.keys.delete(e.code);
@@ -219,7 +273,8 @@ window.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { input.keys.clear(); input.fire = false; input.kick = false; });
 
 // ============================== переходы состояний ==============================
-function startRun(selectedMap = currentMapId) {
+function startRun(selectedMap = currentMapId, mode = 'waves') {
+  currentGameMode = mode;
   setMap(selectedMap);
   sfx.init();
   sfx.setVolumes(settings.sfxVol, settings.musicVol);
@@ -231,19 +286,32 @@ function startRun(selectedMap = currentMapId) {
   player.reset(spawn.x, spawn.y, spawn.z, spawn.yaw);
 
   kills = score = shotsFired = shotsHit = headshots = stylePts = hitstop = 0;
-  waves.reset();
   hud.forceClearOverlays();
-  hud.noScreen(); hud.showGame(true);
+  hud.noScreen(); hud.showGame(true, mode);
   hud.fadeFromBlack();
   hud.setHP(player.hp, player.maxHp);
   hud.setAmmo(player.mag, player.magSize, false, player.curSlot === 1);
   hud.setWeaponSlot(player.curSlot);
   hud.setFlashlight(player.flashlightOn);
   hud.setKills(0); hud.setScore(0); hud.setStyle(0);
-  hud.setWave(0);
-  hud.hint(fallbackLook
-    ? 'ЛКМ — огонь · 1/2 — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка'
-    : 'ЛКМ — огонь · 1/2/КОЛЕСО — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка');
+
+  if (mode === 'waves') {
+    waves.reset();
+    hud.setWave(1);
+    hud.hint(fallbackLook
+      ? 'ЛКМ — огонь · 1/2 — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка'
+      : 'ЛКМ — огонь · 1/2/КОЛЕСО — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка');
+  } else {
+    // РЕЖИМ ПЕСОЧНИЦЫ / БЕСТИАРИЙ
+    waves.state = 'idle';
+    hud.countdown(0, 0);
+    hud.setSandboxAIToggle(hud.aiEnabledInSandbox);
+    // Спавним тестового монстра прямо на центральной платформе перед игроком
+    enemies.spawn('minion', 0, 0, 1, !hud.aiEnabledInSandbox);
+    hud.banner('ПЕСОЧНИЦА АКТИВИРОВАНА', 'КЛАВИШИ 5-8: СПАВН · 9: ИИ ВКЛ/ВЫКЛ · 0: ОЧИСТИТЬ');
+    hud.hint('Клавиши 5-8 — спавн тварей · 9 — вкл/выкл ИИ · 0 — очистить · 1/2 — оружие · F — пинок');
+  }
+
   player.rifleAssets.group.visible = true;
   state = 'playing';
   tryLock();
@@ -269,11 +337,14 @@ function quitToMenu() {
   document.exitPointerLock && document.exitPointerLock();
 }
 
-hud.onPlay = startRun;
+hud.onPlay = (map, mode) => startRun(map, mode);
 hud.onResume = resumeGame;
 hud.onQuit = quitToMenu;
-hud.onRestart = startRun;
+hud.onRestart = (map, mode) => startRun(map, mode);
 hud.onMapSelect = mapId => setMap(mapId);
+hud.onSpawn = typeName => spawnSandboxMonster(typeName);
+hud.onToggleAI = () => toggleSandboxAI();
+hud.onClearEnemies = () => clearSandbox();
 hud.onSettingsClose = () => { if (state === 'paused') hud.screen('pause'); else hud.screen('menu'); };
 
 // ============================== запуск ==============================
@@ -308,7 +379,9 @@ function frame(now) {
     if (input.keys.has('ArrowDown')) player.pitch = clamp(player.pitch - 1.9 * dt, -1.55, 1.55);
     player.update(dt, input, arena, { enemies, fx, sfx, hud });
     enemies.update(dt, player, arena);
-    waves.update(dt);
+    if (currentGameMode === 'waves') {
+      waves.update(dt);
+    }
     arena.updatePickups(dt, time, player.pos, onPickup);
     fx.update(dt, arena);
     stylePts = Math.max(0, stylePts - 55 * dt);
@@ -354,14 +427,16 @@ window.__VOX__ = {
   ready: false,
   get state() { return state; },
   gfx: applyFns,
-  start: (map = 'catacombs') => startRun(map),
-  spawn: (typeName = 'minion', dx = 0, dz = -6) => {
+  start: (map = 'arena', mode = 'waves') => startRun(map, mode),
+  startSandbox: (map = 'arena') => startRun(map, 'sandbox'),
+  spawn: (typeName = 'minion', dx = 0, dz = -6, aiDisabled = false) => {
     const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
     const wx = player.pos.x + dx * c - dz * s;
     const wz = player.pos.z + dx * s + dz * c;
-    return enemies.spawn(typeName, wx, wz, 1);
+    return enemies.spawn(typeName, wx, wz, 1, aiDisabled);
   },
   setMap: mapId => setMap(mapId),
+  toggleAI: () => toggleSandboxAI(),
   enemies, player, waves, hud, fx,
   killAll: () => enemies.killAllInstant(),
 };

@@ -34,7 +34,7 @@ export class EnemyManager {
     this._dripC = new THREE.Color(0x3e0605);
   }
 
-  spawn(typeName, x, z, wave = 1) {
+  spawn(typeName, x, z, wave = 1, aiEnabled = true) {
     const T = TYPES[typeName];
     if (!T) return null;
     const group = new THREE.Group();
@@ -75,12 +75,14 @@ export class EnemyManager {
       pos: group.position,
       hp: T.hp * (1 + wave * 0.07), maxHp: T.hp * (1 + wave * 0.07),
       speed: T.speed * Math.min(1.12, 1 + wave * 0.012),
-      state: 'spawn', t: 0, animT: 0, animDur: SPAWN_T, atkDur: T.atkDur,
+      state: aiEnabled ? 'spawn' : 'dummy_preview',
+      aiDisabled: !aiEnabled,
+      t: 0, animT: 0, animDur: SPAWN_T, atkDur: T.atkDur,
       cdT: rand(T.cd[0], T.cd[1]) * 0.6,
       phase: rand(0, 6.28), seed: rand(0, 20),
       twitch: 0, spasm: 0, twist: rand(-0.14, 0.14), tilt: rand(-0.12, 0.12),
       baseY: T.baseY || 0,
-      growlT: rand(3, 8), strafeDir: Math.random() < 0.5 ? 1 : -1,
+      strafeDir: Math.random() < 0.5 ? 1 : -1,
       appliedHit: false, flashT: 0, staggerT: 0,
 
       // --- Сенсорное восприятие и зрение (Line of Sight & Awareness) ---
@@ -116,6 +118,17 @@ export class EnemyManager {
     attachEnemyDamage(e, this, this.hooks);
     this.list.push(e);
     return e;
+  }
+
+  setAllAI(enabled) {
+    for (const e of this.list) {
+      e.aiDisabled = !enabled;
+      if (!enabled && (e.state === 'chase' || e.state === 'patrol' || e.state === 'investigate' || e.state === 'attack')) {
+        e.state = (e.severed.lLeg || e.severed.rLeg) ? 'crawl_chase' : 'dummy_preview';
+      } else if (enabled && e.state === 'dummy_preview') {
+        e.state = 'patrol';
+      }
+    }
   }
 
   get aliveCount() {
@@ -368,13 +381,18 @@ export class EnemyManager {
         e.lastKnownPlayerPos = player.pos.clone();
         if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
           e.state = 'chase';
-          sfx.growl(e.typeName === 'warrior' ? 60 : e.typeName === 'mage' ? 120 : 90);
         }
       } else {
         e.hasLOS = false;
       }
 
       switch (e.state) {
+        case 'dummy_preview': {
+          // Режим манекена: монстр стоит на месте для осмотра анатомии и анимаций
+          e.animT += dt;
+          break;
+        }
+
         case 'spawn': {
           e.t += dt; e.animT += dt;
           poseMonster(e, dt, t);
@@ -508,12 +526,6 @@ export class EnemyManager {
             if (!e.T.ranged) sfx.swing();
           }
 
-          e.growlT -= dt;
-          if (e.growlT <= 0) {
-            e.growlT = rand(5, 11);
-            sfx.growl(e.typeName === 'warrior' ? 60 : e.typeName === 'mage' ? 120 : 90);
-          }
-
           if (e.typeName !== 'mage' && Math.random() < dt * 0.7) {
             const hd = e.typeName === 'warrior' ? e.T.height * 0.68 : e.T.height * 0.78;
             fx.voxel(e.pos.x, e.pos.y + hd, e.pos.z, 0, -1.4, 0, this._dripC, 0.024, 1.5, { bounce: 0, isFluid: true });
@@ -645,7 +657,7 @@ export class EnemyManager {
         case 'getup': {
           e.getupT += dt;
           if (e.getupT >= e.getupDur) {
-            e.state = e.hasLOS ? 'chase' : 'patrol';
+            e.state = e.aiDisabled ? 'dummy_preview' : (e.hasLOS ? 'chase' : 'patrol');
             e.cdT = 0.4;
           }
           break;
@@ -939,9 +951,11 @@ export class EnemyManager {
         this.hooks.hud.styleEvent('ПИНОК! +' + (e.hp <= 0 ? '120' : '45'));
       }
 
-      // Немедленно агрим врага на пинок
-      e.lastKnownPlayerPos = origin.clone();
-      if (e.state === 'patrol' || e.state === 'investigate') e.state = 'chase';
+      // Агрим врага на пинок (если включен ИИ)
+      if (!e.aiDisabled) {
+        e.lastKnownPlayerPos = origin.clone();
+        if (e.state === 'patrol' || e.state === 'investigate') e.state = 'chase';
+      }
 
       if (e.hp <= 0) {
         if (this.hooks.onKill) this.hooks.onKill(e, false, false);
@@ -1016,12 +1030,14 @@ export function attachEnemyDamage(e, mgr, hooks) {
     const isHead = hitZone === 'head' || hitInfo.head;
     const shotDir = dir || UP;
 
-    // Урон привлекает внимание монстра к стрелявшему
-    e.lastKnownPlayerPos = (point || e.pos).clone().addScaledVector(shotDir, -4);
-    if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
-      e.state = 'chase';
+    // Урон привлекает внимание монстра к стрелявшему (если включен ИИ)
+    if (!e.aiDisabled) {
+      e.lastKnownPlayerPos = (point || e.pos).clone().addScaledVector(shotDir, -4);
+      if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
+        e.state = 'chase';
+      }
+      mgr.alertSound(point || e.pos, 20);
     }
-    mgr.alertSound(point || e.pos, 20);
 
     if (e.state === 'corpse_ragdoll') {
       const big = e.T === TYPES.warrior;

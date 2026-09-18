@@ -577,7 +577,6 @@ export class Player {
       if (this.onHit) this.onHit({ head, killed: hitEnemy.hp <= 0, enemy: hitEnemy, hitZone, isCorpse });
     } else if (wHit) {
       fx.impact(point, wHit.normal);
-      sfx.boneCrack();
     }
   }
 

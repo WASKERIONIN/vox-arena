@@ -965,6 +965,9 @@ export function poseMonster(e, dt, t) {
 
   switch (e.state) {
     case 'spawn': poseSpawn(e, dt, t); break;
+    case 'dummy_preview':
+    case 'dummy_idle': poseIdle(e, dt, t, P, type); break;
+    case 'dummy_walk':
     case 'patrol':
     case 'wander':
     case 'investigate':
