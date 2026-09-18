@@ -247,6 +247,32 @@ export class FX {
     this.decal(this.holes, p, n, rand(0.12, 0.2));
   }
 
+  woodImpact(p, n) {
+    const k = Math.round(12 * this.budget);
+    const splinters = [this._c(0xb0a890), this._c(0x8a7f6a), this._c(0xc8bfab), this._c(0x5a5040)];
+    for (let i = 0; i < k; i++) {
+      const v = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).add(n.clone().multiplyScalar(2.0)).normalize().multiplyScalar(rand(2.5, 7.5));
+      this.voxel(p.x, p.y, p.z, v.x, v.y + 1, v.z, pick(splinters), rand(0.025, 0.055), rand(0.6, 1.4), { grav: 1.3, bounce: 0.35 });
+    }
+    this.smokePuff(p, 0.8, 0x8a8070, 0.35);
+  }
+
+  woodGibs(p, size = 1.4) {
+    const n = Math.round(38 * this.budget);
+    const splinters = [this._c(0xb0a890), this._c(0x8a7f6a), this._c(0xc8bfab), this._c(0x5a5040), this._c(0x3e3528)];
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), up = rand(2.5, 8.5);
+      this.voxel(
+        p.x + rand(-size * 0.35, size * 0.35),
+        p.y + rand(0.1, size * 0.9),
+        p.z + rand(-size * 0.35, size * 0.35),
+        Math.cos(a) * rand(1.5, 6.5), up, Math.sin(a) * rand(1.5, 6.5),
+        pick(splinters), rand(0.055, 0.15), rand(3.5, 6.5), { bounce: 0.4, grav: 1.2 }
+      );
+    }
+    this.smokePuff(p, 1.8, 0x7a7065, 0.5);
+  }
+
   explosion(p) {
     const fire = [this._c(0xff8a30), this._c(0xffd060), this._c(0xff4410)];
     const n = Math.round(36 * this.budget);

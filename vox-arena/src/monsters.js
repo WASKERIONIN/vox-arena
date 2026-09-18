@@ -40,6 +40,26 @@ function jitter(geo, amt) {
   return geo;
 }
 
+// Геометрия шипа / когтя / клыка / лезвия:
+// Основание на Y = 0 (укоренено в плоти), остриё направлено по -Y на расстояние -len (торчит наружу)
+function makeSpikeGeo(radius, len, radialSegments = 4) {
+  const g = new THREE.ConeGeometry(radius, len, radialSegments);
+  // В Three.js вершина (остриё) на +len/2, основание на -len/2.
+  // Переворачиваем чтобы остриё смотрело вдоль -Y (наружу):
+  g.rotateX(Math.PI);
+  // Сдвигаем так, чтобы основание находилось в начале координат (Y = 0):
+  g.translate(0, -len / 2, 0);
+  return g;
+}
+
+// Геометрия шипа, направленного вдоль +Z (вперед из тела):
+function makeSpikeForwardGeo(radius, len, radialSegments = 4) {
+  const g = new THREE.ConeGeometry(radius, len, radialSegments);
+  g.rotateX(Math.PI / 2); // Остриё направлено в +Z
+  g.translate(0, 0, len / 2); // Основание на Z = 0
+  return g;
+}
+
 // сегмент конечности: шарнир сверху, «шарик сустава» (капсула) вниз
 function seg(parent, len, r, mat, opts = {}) {
   const j = J(parent, opts.x || 0, opts.y || 0, opts.z || 0);
@@ -108,10 +128,11 @@ function addEye(parent, M, tex, mat, x, y, z, r, glowColor, scale = 0.16) {
 function addClaws(hand, M, n, len = 0.09) {
   for (let i = 0; i < n; i++) {
     const a = (i - (n - 1) / 2) * 0.5;
-    const c = new THREE.Mesh(new THREE.ConeGeometry(0.016, len, 4), M.bone);
-    c.position.set(Math.sin(a) * 0.03, -len / 2 + 0.01, Math.cos(a) * 0.02 + 0.02);
-    c.rotation.x = -0.5;
-    c.rotation.z = -a * 0.7;
+    // Остриё когтей направлено наружу от кисти руки вперед-вниз
+    const c = new THREE.Mesh(makeSpikeGeo(0.018, len, 4), M.bone);
+    c.position.set(Math.sin(a) * 0.03, -0.01, Math.cos(a) * 0.02 + 0.02);
+    c.rotation.x = -0.45;
+    c.rotation.z = -a * 0.5;
     hand.add(c);
   }
 }
@@ -159,10 +180,18 @@ function buildRunner(M, tex) {
   }
 
   const jaw = J(head, 0, -0.1, 0.06); j.jaw = jaw;
-  const jm = new THREE.Mesh(jitter(new THREE.ConeGeometry(0.055, 0.16, 5), 0.012), M.maw);
-  jm.position.y = -0.07; jm.rotation.x = -0.25; jaw.add(jm);
+  const jm = new THREE.Mesh(jitter(makeSpikeGeo(0.055, 0.16, 5), 0.012), M.maw);
+  jm.position.set(0, 0, 0.02); jm.rotation.x = -0.35; jaw.add(jm);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 3 - 0.5) * 1.2;
+    const t = new THREE.Mesh(makeSpikeGeo(0.012, 0.04, 4), M.bone);
+    t.position.set(Math.sin(a) * 0.04, -0.02, 0.06);
+    t.rotation.x = -0.5;
+    t.rotation.z = -a * 0.4;
+    jaw.add(t);
+  }
 
-  // Руки — вытянуты вперёд к жертве
+  // Руки — вытянуты вперёд к жертве + шипы на предплечьях
   for (const s of [1, -1]) {
     const sh = J(chest, s * 0.24, 0.26, 0);
     if (s === 1) j.lShoulder = sh; else j.rShoulder = sh;
@@ -170,6 +199,16 @@ function buildRunner(M, tex) {
     const el = J(up, 0, -0.34, 0);
     if (s === 1) j.lElbow = el; else j.rElbow = el;
     const lo = seg(el, 0.34, 0.04, M.meatDark);
+
+    // Шипы на локтях (остриё торчит наружу из руки)
+    for (let k = 0; k < 2; k++) {
+      const spk = new THREE.Mesh(makeSpikeGeo(0.018, 0.09, 4), M.bone);
+      spk.position.set(s * 0.04, -0.12 - k * 0.1, -0.02);
+      spk.rotation.z = s * 1.35; // остриё смотрит вбок наружу
+      spk.rotation.x = 0.3;
+      lo.add(spk);
+    }
+
     const hand = J(lo, 0, -0.34, 0);
     if (s === 1) j.lHand = hand; else j.rHand = hand;
     addClaws(hand, M, 3, 0.1);
@@ -219,9 +258,10 @@ function buildButcher(M, tex) {
     chest.add(t);
   }
   for (let i = 0; i < 4; i++) {
-    const v = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.09, 4), M.bone);
+    // Шипы на спине (остриё торчит наружу из спины назад)
+    const v = new THREE.Mesh(makeSpikeGeo(0.03, 0.11, 4), M.bone);
     v.position.set(0.02, 0.1 + i * 0.07, -0.24);
-    v.rotation.x = -1.9;
+    v.rotation.x = 1.35; // остриё смотрит назад и чуть вверх
     chest.add(v);
   }
 
@@ -245,25 +285,42 @@ function buildButcher(M, tex) {
   lip.position.y = -0.02; jaw.add(lip);
   for (let i = 0; i < 6; i++) {
     const a = (i / 5 - 0.5) * 1.6;
-    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.05, 4), M.bone);
-    tooth.position.set(Math.sin(a) * 0.07, -0.055, Math.cos(a) * 0.015 + 0.01);
-    tooth.rotation.x = Math.PI + 0.3;
+    // Зубы челюсти: остриё торчит вверх-вперед
+    const tooth = new THREE.Mesh(makeSpikeGeo(0.016, 0.06, 4), M.bone);
+    tooth.position.set(Math.sin(a) * 0.07, -0.01, Math.cos(a) * 0.015 + 0.02);
+    tooth.rotation.x = 2.8; // остриё вверх-вперед
+    tooth.rotation.z = -a * 0.3;
     jaw.add(tooth);
   }
 
-  // Правая рука — костяное лезвие
+  // Правая рука — длинное костяное лезвие (остриё торчит наружу из локтя)
   const rsh = J(chest, -0.3, 0.14, 0); j.rShoulder = rsh;
   const rup = seg(rsh, 0.26, 0.09, M.meat);
   const rel = J(rup, 0, -0.26, 0); j.rElbow = rel;
-  const blade = new THREE.Mesh(jitter(new THREE.ConeGeometry(0.085, 0.62, 4), 0.015), M.meatPale);
-  blade.scale.set(1, 1, 0.3); blade.position.y = -0.28; blade.rotation.z = 0.15; rel.add(blade);
+
+  // Остриё лезвия смотрит прямо вперед-вниз от локтя наружу:
+  const blade = new THREE.Mesh(jitter(makeSpikeGeo(0.09, 0.64, 4), 0.015), M.meatPale);
+  blade.scale.set(1, 1, 0.35); blade.rotation.z = 0.12; rel.add(blade);
+
+  // Боковые шипы вдоль лезвия и локтя (остриё наружу)
+  for (let k = 0; k < 3; k++) {
+    const spk = new THREE.Mesh(makeSpikeGeo(0.022, 0.1, 4), M.bone);
+    spk.position.set(-0.06, -0.15 - k * 0.14, 0.01);
+    spk.rotation.z = -1.45; // торчит наружу влево
+    rel.add(spk);
+  }
+
   const seam = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.5, 0.012), M.eyeRed);
   seam.position.set(0.05, -0.3, 0.015); rel.add(seam);
   j.rHand = J(rel, 0, -0.6, 0);
 
-  // Левая рука — когти
+  // Левая рука — когти + шипы на плече
   const lsh = J(chest, 0.28, 0.12, 0); j.lShoulder = lsh;
   const lup = seg(lsh, 0.3, 0.045, M.meatDark);
+  // Шип на левом плече
+  const shSpike = new THREE.Mesh(makeSpikeGeo(0.025, 0.12, 4), M.bone);
+  shSpike.position.set(0.06, 0, 0); shSpike.rotation.z = 1.35; lup.add(shSpike);
+
   const lel = J(lup, 0, -0.3, 0); j.lElbow = lel;
   const llo = seg(lel, 0.34, 0.038, M.meatDark);
   const lhand = J(llo, 0, -0.34, 0); j.lHand = lhand;
@@ -287,7 +344,7 @@ function buildButcher(M, tex) {
 }
 
 // ============================================================================
-// 3) КЛЕЩ — раздутый громила с пастью на груди
+// 3) КЛЕЩ — раздутый громила с пастью на животе
 // ============================================================================
 function buildBrute(M, tex) {
   const root = new THREE.Group();
@@ -304,6 +361,7 @@ function buildBrute(M, tex) {
   ch.scale.set(1.12, 1.15, 1); ch.position.y = 0.1; chest.add(ch);
   j.belly = ch;
 
+  // Рёбра на верхней части груди
   for (let i = 0; i < 3; i++) {
     const t = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 4, 14, Math.PI * 1.3), M.bone);
     t.rotation.set(Math.PI / 2, 0, 0);
@@ -312,29 +370,45 @@ function buildBrute(M, tex) {
     chest.add(t);
   }
 
-  const mawJ = J(chest, 0, 0.05, 0.42); j.maw = mawJ;
-  const zew = new THREE.Mesh(new THREE.SphereGeometry(0.19, 7, 5), M.maw);
-  zew.scale.set(1, 1.35, 0.5); mawJ.add(zew);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 7 - 0.5) * 2.2;
-    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.09, 4), M.bone);
-    tooth.position.set(Math.sin(a) * 0.14, 0.12, 0.12);
-    tooth.rotation.x = Math.PI * 0.85;
-    tooth.rotation.z = -a * 0.4;
-    mawJ.add(tooth);
+  // ========================================================================
+  // Пасть на животе: расположена прямо по центру выпирающего брюха
+  // ========================================================================
+  const bellyMaw = J(chest, 0, -0.06, 0.46); j.maw = bellyMaw;
+
+  // Тёмная глотка внутри брюха
+  const throat = new THREE.Mesh(new THREE.SphereGeometry(0.22, 7, 5), M.maw);
+  throat.scale.set(1.2, 0.9, 0.6); throat.position.set(0, 0, -0.04); bellyMaw.add(throat);
+
+  // Мясистые губы вокруг пасти живота
+  const lips = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.045, 5, 12), M.meatDark);
+  lips.scale.set(1.25, 0.85, 1); lips.position.set(0, 0, 0.04); bellyMaw.add(lips);
+
+  // Верхний ряд зубов пасти живота: основание сверху, острия торчат ВНИЗ и НАРУЖУ
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 6 - 0.5) * 2.2;
+    const tooth = new THREE.Mesh(makeSpikeGeo(0.024, 0.09, 4), M.bone);
+    tooth.position.set(Math.sin(a) * 0.22, 0.14, Math.cos(a) * 0.04 + 0.04);
+    tooth.rotation.x = 0.35; // остриё смотрит вниз-вперед наружу
+    tooth.rotation.z = -a * 0.3;
+    bellyMaw.add(tooth);
   }
 
-  const jaw = J(mawJ, 0, 0, 0.05); j.jaw = jaw;
-  const lower = new THREE.Mesh(new THREE.SphereGeometry(0.16, 7, 4, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5), M.meatDark);
-  lower.scale.set(1, 0.7, 0.8); lower.position.y = -0.1; jaw.add(lower);
+  // Нижняя подвижная челюсть пасти живота
+  const lowerBellyJaw = J(bellyMaw, 0, -0.16, 0.04); j.jaw = lowerBellyJaw;
+  const lowerRim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 4, 10, Math.PI * 1.1), M.meatDark);
+  lowerRim.rotation.x = Math.PI * 0.5; lowerRim.position.set(0, -0.02, 0.02); lowerBellyJaw.add(lowerRim);
+
+  // Нижний ряд зубов пасти живота: основание снизу, острия торчат ВВЕРХ и НАРУЖУ
   for (let i = 0; i < 6; i++) {
     const a = (i / 5 - 0.5) * 1.9;
-    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.08, 4), M.bone);
-    tooth.position.set(Math.sin(a) * 0.11, -0.02, 0.1);
-    tooth.rotation.x = 0.35;
-    jaw.add(tooth);
+    const tooth = new THREE.Mesh(makeSpikeGeo(0.022, 0.08, 4), M.bone);
+    tooth.position.set(Math.sin(a) * 0.18, -0.02, Math.cos(a) * 0.03 + 0.04);
+    tooth.rotation.x = 2.8; // остриё смотрит вверх-вперед наружу!
+    tooth.rotation.z = -a * 0.25;
+    lowerBellyJaw.add(tooth);
   }
 
+  // Шея и голова
   const neck = J(chest, 0, 0.62, 0.12); j.neck = neck;
   const nk = new THREE.Mesh(jitter(new THREE.CapsuleGeometry(0.1, 0.12, 2, 6), 0.02), M.meat);
   nk.position.y = 0.06; neck.add(nk);
@@ -345,19 +419,51 @@ function buildBrute(M, tex) {
     addEye(head, M, tex, M.eyeRed, sx, 0.02, 0.115, 0.018, 0xff2a12, 0.11);
   }
 
+  // Рога / шипы на голове (остриё торчит вверх-наружу)
+  for (const sx of [-0.07, 0.07]) {
+    const horn = new THREE.Mesh(makeSpikeGeo(0.025, 0.14, 4), M.bone);
+    horn.position.set(sx, 0.09, 0.02);
+    horn.rotation.z = (sx > 0 ? -1 : 1) * 2.5; // остриё вверх и наружу
+    horn.rotation.x = 0.3;
+    head.add(horn);
+  }
+
+  // ========================================================================
+  // Мощные руки с шипами и клешнями (острия торчат строго наружу)
+  // ========================================================================
   for (const s of [1, -1]) {
     const sh = J(chest, s * 0.55, 0.28, 0.08);
     if (s === 1) j.lShoulder = sh; else j.rShoulder = sh;
     const up = seg(sh, 0.3, 0.11, M.meat);
+
+    // Большие шипы на плечах (остриё торчит вверх и вбок наружу)
+    const shHorn = new THREE.Mesh(makeSpikeGeo(0.038, 0.18, 4), M.bone);
+    shHorn.position.set(s * 0.1, 0.04, 0);
+    shHorn.rotation.z = s * 1.6; // остриё наружу
+    shHorn.rotation.x = -0.3;
+    up.add(shHorn);
+
     const el = J(up, 0, -0.3, 0);
     if (s === 1) j.lElbow = el; else j.rElbow = el;
     const lo = seg(el, 0.26, 0.09, M.meatDark);
+
+    // Шипы на локтях / предплечьях (остриё смотрит наружу вбок)
+    for (let k = 0; k < 3; k++) {
+      const spk = new THREE.Mesh(makeSpikeGeo(0.026, 0.12, 4), M.bone);
+      spk.position.set(s * 0.08, -0.06 - k * 0.08, -0.02);
+      spk.rotation.z = s * 1.45; // остриё торчит наружу из руки!
+      spk.rotation.x = 0.2;
+      lo.add(spk);
+    }
+
     const hand = J(lo, 0, -0.26, 0);
     if (s === 1) j.lHand = hand; else j.rHand = hand;
-    const p1 = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 5), M.bone);
-    p1.position.set(-0.055, -0.12, 0.03); p1.rotation.x = -0.35;
-    const p2 = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 5), M.bone);
-    p2.position.set(0.055, -0.12, 0.03); p2.rotation.x = -0.35;
+
+    // Клешни / шипы-хваты: основание в руке (Y = 0), остриё смотрит вперед-наружу (Y = -0.3)
+    const p1 = new THREE.Mesh(makeSpikeGeo(0.045, 0.32, 5), M.bone);
+    p1.position.set(-0.05, 0, 0.03); p1.rotation.x = -0.35; p1.rotation.z = 0.15;
+    const p2 = new THREE.Mesh(makeSpikeGeo(0.045, 0.32, 5), M.bone);
+    p2.position.set(0.05, 0, 0.03); p2.rotation.x = -0.35; p2.rotation.z = -0.15;
     hand.add(p1, p2);
     if (s === 1) { j.pincerA = p1; j.pincerB = p2; }
   }
@@ -366,6 +472,13 @@ function buildBrute(M, tex) {
     const hip = J(pelvis, s * 0.24, -0.1, 0);
     if (s === 1) j.lHip = hip; else j.rHip = hip;
     const th = seg(hip, 0.42, 0.13, M.meat);
+
+    // Шип на бедре
+    const thighSpk = new THREE.Mesh(makeSpikeGeo(0.03, 0.12, 4), M.bone);
+    thighSpk.position.set(s * 0.12, -0.18, 0);
+    thighSpk.rotation.z = s * 1.4;
+    th.add(thighSpk);
+
     const kn = J(th, 0, -0.42, 0);
     if (s === 1) j.lKnee = kn; else j.rKnee = kn;
     const sh2 = seg(kn, 0.36, 0.11, M.meatDark);
@@ -409,8 +522,8 @@ function buildSpawn(M, tex) {
     const r = 0.12 + (i % 3) * 0.08;
     const t = J(sacJ, Math.cos(a) * r, -0.42, Math.sin(a) * r * 0.6);
     const len = 0.4 + Math.random() * 0.3;
-    const c = new THREE.Mesh(jitter(new THREE.ConeGeometry(0.055, len, 5), 0.015), M.membrane);
-    c.position.y = -len / 2;
+    // Остриё щупалец направлено вниз наружу
+    const c = new THREE.Mesh(jitter(makeSpikeGeo(0.055, len, 5), 0.015), M.membrane);
     t.add(c);
     j.tendrils.push(t);
   }

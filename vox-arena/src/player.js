@@ -214,7 +214,7 @@ export class Player {
   }
 
   update(dt, input, arena, ctx) {
-    const { enemies, fx, sfx, hud } = ctx;
+    const { enemies, fx, sfx, hud, props } = ctx;
     const w = this.curWeapon;
 
     // --- Переключение оружия по клавишам ---
@@ -351,8 +351,8 @@ export class Player {
 
     if (wantsFire && !this.reloading && !this.switching && this.cd <= 0) {
       if (this.mag > 0) {
-        if (w.type === 'shotgun') this._fireShotgun(arena, enemies, fx, sfx, hud);
-        else this._fireRifle(arena, enemies, fx, sfx, hud);
+        if (w.type === 'shotgun') this._fireShotgun(arena, enemies, fx, sfx, hud, props);
+        else this._fireRifle(arena, enemies, fx, sfx, hud, props);
       } else {
         this.cd = 0.25; sfx.dry(); this._startReload(sfx, hud);
       }
@@ -503,9 +503,27 @@ export class Player {
       if (kp >= 0.28 && !this.kickHitApplied) {
         this.kickHitApplied = true;
         this.camera.getWorldDirection(_fwd);
-        const hit = enemies.kickMelee(this.eyePos, _fwd, 2.4, 20, 55);
-        if (hit) {
-          this.shake = Math.min(0.45, this.shake + 0.18);
+        const hitEnemy = enemies.kickMelee(this.eyePos, _fwd, 2.4, 20, 55);
+
+        // Проверка пинка по физическим ящикам и объектам
+        let hitProp = false;
+        if (props) {
+          const pHit = props.raycast(this.eyePos, _fwd, 2.6);
+          if (pHit) {
+            hitProp = true;
+            // Мощнейший пинок по ящику — отправляет его в полет как снаряд
+            const kickImpulse = _fwd.clone().multiplyScalar(44.0).add(new THREE.Vector3(0, 16.0, 0));
+            pHit.prop.applyImpulse(pHit.point, kickImpulse, true);
+            if (sfx) {
+              sfx.crateThud(3.5);
+              sfx.kick();
+            }
+            if (fx) fx.woodImpact(pHit.point, _fwd.clone().negate());
+          }
+        }
+
+        if (hitEnemy || hitProp) {
+          this.shake = Math.min(0.45, this.shake + 0.22);
         }
         enemies.alertSound(this.pos, 14);
       }
@@ -530,7 +548,7 @@ export class Player {
   }
 
   // Выстрел из автомата «СЕКТОР-9»
-  _fireRifle(arena, enemies, fx, sfx, hud) {
+  _fireRifle(arena, enemies, fx, sfx, hud, props = null) {
     this.mag--;
     this.cd = this.curWeapon.fireInterval;
     this.heat = Math.min(1, this.heat + 0.085);
@@ -553,15 +571,27 @@ export class Player {
 
     const MAXD = 120;
     const eHit = enemies.raycast(origin, dir, MAXD);
-    const wHit = arena.raycastWorld(origin, dir, eHit ? eHit.dist : MAXD);
-    let point, hitEnemy = null, head = false, hitZone = 'torso', isCorpse = false;
+    const pHit = props ? props.raycast(origin, dir, MAXD) : null;
+    const maxWorldD = Math.min(eHit ? eHit.dist : MAXD, pHit ? pHit.dist : MAXD);
+    const wHit = arena.raycastWorld(origin, dir, maxWorldD);
 
-    if (eHit && (!wHit || eHit.dist < wHit.dist)) {
+    let point, hitEnemy = null, hitProp = null, head = false, hitZone = 'torso', isCorpse = false;
+
+    // Определяем ближайшее попадание среди врагов, физ. объектов и геометрии
+    const eDist = eHit ? eHit.dist : 9999;
+    const pDist = pHit ? pHit.dist : 9999;
+    const wDist = wHit ? wHit.dist : 9999;
+    const minDist = Math.min(eDist, pDist, wDist);
+
+    if (minDist === eDist && eHit) {
       point = eHit.point;
       hitEnemy = eHit.enemy;
       head = eHit.head;
       hitZone = eHit.hitZone || 'torso';
       isCorpse = !!eHit.isCorpse;
+    } else if (minDist === pDist && pHit) {
+      point = pHit.point;
+      hitProp = pHit.prop;
     } else if (wHit) {
       point = wHit.point;
     } else {
@@ -575,13 +605,16 @@ export class Player {
       if (head) dmg *= 2.6;
       hitEnemy.damage(dmg, point, dir, { head, hitZone, isCorpse });
       if (this.onHit) this.onHit({ head, killed: hitEnemy.hp <= 0, enemy: hitEnemy, hitZone, isCorpse });
+    } else if (hitProp) {
+      // Попадание по физическому ящику: урон + импульс + щепки
+      hitProp.damage(this.curWeapon.baseDamage + 4, point, dir, fx, sfx);
     } else if (wHit) {
       fx.impact(point, wHit.normal);
     }
   }
 
   // Выстрел из двуствольного обреза «ПАЛАЧ» (залп 9 дробин с высоким разлетом и отдачей)
-  _fireShotgun(arena, enemies, fx, sfx, hud) {
+  _fireShotgun(arena, enemies, fx, sfx, hud, props = null) {
     this.mag--;
     this.cd = this.curWeapon.fireInterval;
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
@@ -610,15 +643,26 @@ export class Player {
       const dir = this._shootDir(baseSpread).clone();
       const MAXD = 80;
       const eHit = enemies.raycast(origin, dir, MAXD);
-      const wHit = arena.raycastWorld(origin, dir, eHit ? eHit.dist : MAXD);
-      let point, hitEnemy = null, head = false, hitZone = 'torso', isCorpse = false;
+      const pHit = props ? props.raycast(origin, dir, MAXD) : null;
+      const maxWorldD = Math.min(eHit ? eHit.dist : MAXD, pHit ? pHit.dist : MAXD);
+      const wHit = arena.raycastWorld(origin, dir, maxWorldD);
 
-      if (eHit && (!wHit || eHit.dist < wHit.dist)) {
+      let point, hitEnemy = null, hitProp = null, head = false, hitZone = 'torso', isCorpse = false;
+
+      const eDist = eHit ? eHit.dist : 9999;
+      const pDist = pHit ? pHit.dist : 9999;
+      const wDist = wHit ? wHit.dist : 9999;
+      const minDist = Math.min(eDist, pDist, wDist);
+
+      if (minDist === eDist && eHit) {
         point = eHit.point;
         hitEnemy = eHit.enemy;
         head = eHit.head;
         hitZone = eHit.hitZone || 'torso';
         isCorpse = !!eHit.isCorpse;
+      } else if (minDist === pDist && pHit) {
+        point = pHit.point;
+        hitProp = pHit.prop;
       } else if (wHit) {
         point = wHit.point;
       } else {
@@ -643,6 +687,9 @@ export class Player {
         if (eHit.dist < 3.8) {
           fx.bloodFountain(point, dir.clone().add(new THREE.Vector3(0, 0.6, 0)).normalize(), 35, 2.0);
         }
+      } else if (hitProp) {
+        // Попадание дробины по физическому ящику: мощный импульс отдачи
+        hitProp.damage(this.curWeapon.baseDamage + 6, point, dir, fx, sfx);
       } else if (wHit) {
         fx.impact(point, wHit.normal);
       }

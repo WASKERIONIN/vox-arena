@@ -5,6 +5,7 @@ import { PS1 } from './ps1.js';
 import { AudioSys } from './audio.js';
 import { FX } from './fx.js';
 import { buildArena, MAPS } from './arena.js';
+import { PropsManager } from './props.js';
 import { Player } from './player.js';
 import { EnemyManager } from './enemies.js';
 import { Waves } from './waves.js';
@@ -34,7 +35,8 @@ scene.fog = settings.fog ? fogObj : null;
 const T = makeTextures();
 let currentMapId = 'arena'; // По умолчанию возвращаемся на Колизей
 let currentGameMode = 'waves'; // 'waves' | 'sandbox'
-let arena = buildArena(scene, T, currentMapId);
+const props = new PropsManager(scene, T);
+let arena = buildArena(scene, T, currentMapId, props);
 const sfx = new AudioSys();
 const fx = new FX(scene, T);
 fx.setCamera(camera);
@@ -147,7 +149,8 @@ function setMap(mapId) {
   if (currentMapId === mapId && arena) return;
   currentMapId = mapId;
   if (arena) arena.clearMap();
-  arena = buildArena(scene, T, currentMapId);
+  props.clear();
+  arena = buildArena(scene, T, currentMapId, props);
   waves.setArena(arena);
 }
 
@@ -183,8 +186,12 @@ function clearSandbox() {
   if (state !== 'playing') return;
   enemies.clear();
   fx.clear();
+  props.clear();
+  if (arena) arena.clearMap();
+  arena = buildArena(scene, T, currentMapId, props);
+  waves.setArena(arena);
   sfx.pickup();
-  hud.styleEvent('АРЕНА ПОЛНОСТЬЮ ОЧИЩЕНА');
+  hud.styleEvent('АРЕНА И ОБЪЕКТЫ ПОЛНОСТЬЮ СБРОШЕНЫ');
 }
 
 // ============================== ввод ==============================
@@ -377,8 +384,9 @@ function frame(now) {
     if (input.keys.has('ArrowRight')) player.yaw -= 2.7 * dt;
     if (input.keys.has('ArrowUp')) player.pitch = clamp(player.pitch + 1.9 * dt, -1.55, 1.55);
     if (input.keys.has('ArrowDown')) player.pitch = clamp(player.pitch - 1.9 * dt, -1.55, 1.55);
-    player.update(dt, input, arena, { enemies, fx, sfx, hud });
+    player.update(dt, input, arena, { enemies, fx, sfx, hud, props });
     enemies.update(dt, player, arena);
+    props.update(dt, arena, enemies, player, fx, sfx);
     if (currentGameMode === 'waves') {
       waves.update(dt);
     }
@@ -437,7 +445,7 @@ window.__VOX__ = {
   },
   setMap: mapId => setMap(mapId),
   toggleAI: () => toggleSandboxAI(),
-  enemies, player, waves, hud, fx,
+  enemies, player, waves, hud, fx, props,
   killAll: () => enemies.killAllInstant(),
 };
 

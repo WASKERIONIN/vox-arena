@@ -19,7 +19,7 @@ export const MAPS = {
 };
 
 // Построение карт арены или катакомб
-export function buildArena(scene, T, mapId = 'arena') {
+export function buildArena(scene, T, mapId = 'arena', propsMgr = null) {
   const colliders = []; // {min,max}
   const lights = [];
   const meshes = [];
@@ -108,15 +108,19 @@ export function buildArena(scene, T, mapId = 'arena') {
       }
     }
 
-    // Ящики
-    const crateMat = lam(T.crate, 0xb0a890);
+    // Физические интерактивные ящики (Dynamic Physics Props)
     const crates = [
       [8, 0, 14, 1.5], [9.6, 0, 14.4, 1.1], [8.7, 1.5, 14.2, 1.0],
       [-13, 0, 9, 1.4], [-13, 1.4, 9, 0.9],
       [15, 0, -9, 1.6], [-9, 0, -16, 1.3], [-10.4, 0, -15.6, 1.0],
       [18, 0, 6, 1.2], [-17, 0, -4, 1.5], [6, 0, -20, 1.1], [-22, 0, 12, 1.3],
     ];
-    for (const [x, y, z, s] of crates) addBox(x, y, z, s, s, s, crateMat);
+    if (propsMgr) {
+      for (const [x, y, z, s] of crates) propsMgr.addCrate(x, y, z, s, s, s);
+    } else {
+      const crateMat = lam(T.crate, 0xb0a890);
+      for (const [x, y, z, s] of crates) addBox(x, y, z, s, s, s, crateMat);
+    }
 
     // Аптечки
     const spots = [[12.5, 0, 12.5], [-12.5, 0, -12.5], [12.5, 0, -12.5], [-12.5, 0, 12.5]];
@@ -142,7 +146,6 @@ export function buildArena(scene, T, mapId = 'arena') {
 
     const floorMat = lam(T.floor, 0x857f78);
     const wallMat = lam(T.wall, 0x908c88);
-    const crateMat = lam(T.crate, 0x887d6e);
     const metalMat = lam(T.platform, 0x5a6068);
 
     // Пол всего комплекса
@@ -158,7 +161,6 @@ export function buildArena(scene, T, mapId = 'arena') {
     // ------------------------------------------------------------------------
     // ЦЕНТРАЛЬНЫЙ УЗЕЛ (Hub Room: [-8, 8] x [-8, 8])
     // ------------------------------------------------------------------------
-    // Углы центрального зала (оставляя выходы на N, S, E, W по 4м шириной)
     addBox(-6.0, 0, -6.0, 4.0, 5.5, 4.0, wallMat); // SW
     addBox(6.0, 0, -6.0, 4.0, 5.5, 4.0, wallMat);  // SE
     addBox(-6.0, 0, 6.0, 4.0, 5.5, 4.0, wallMat);  // NW
@@ -172,56 +174,53 @@ export function buildArena(scene, T, mapId = 'arena') {
     // ------------------------------------------------------------------------
     // СЕВЕРНОЕ КРЫЛО: Коридор -> Биолаборатория
     // ------------------------------------------------------------------------
-    // Стены северного коридора (Z: 8..20)
-    addBox(-2.8, 0, 14.0, 1.2, 5.5, 12.0, wallMat); // западная стена
-    addBox(2.8, 0, 14.0, 1.2, 5.5, 12.0, wallMat);  // восточная стена
+    addBox(-2.8, 0, 14.0, 1.2, 5.5, 12.0, wallMat);
+    addBox(2.8, 0, 14.0, 1.2, 5.5, 12.0, wallMat);
 
-    // Биолаборатория (Z: 20..32, X: -14..14)
-    addBox(-8.5, 0, 20.0, 10.5, 5.5, 1.2, wallMat); // южная стена слева от двери
-    addBox(8.5, 0, 20.0, 10.5, 5.5, 1.2, wallMat);  // южная стена справа от двери
-    addBox(-14.5, 0, 26.0, 1.2, 5.5, 12.0, wallMat); // западная стена лабы
-    addBox(14.5, 0, 26.0, 1.2, 5.5, 12.0, wallMat);  // восточная стена лабы
+    addBox(-8.5, 0, 20.0, 10.5, 5.5, 1.2, wallMat);
+    addBox(8.5, 0, 20.0, 10.5, 5.5, 1.2, wallMat);
+    addBox(-14.5, 0, 26.0, 1.2, 5.5, 12.0, wallMat);
+    addBox(14.5, 0, 26.0, 1.2, 5.5, 12.0, wallMat);
 
-    // Столы и капсулы внутри биолабы
     addBox(-6.0, 0, 26.0, 2.2, 1.1, 4.0, metalMat);
     addBox(6.0, 0, 26.0, 2.2, 1.1, 4.0, metalMat);
     const labLight = new THREE.PointLight(0x3388ff, 38, 18, 2); labLight.position.set(0, 4.5, 26.0); scene.add(labLight); lights.push(labLight);
 
-    // Портал спавна 1 (Глубина северной лаборатории)
     spawnPoints.push(V3(0, 0, 29.5));
 
     // ------------------------------------------------------------------------
     // ЮЖНОЕ КРЫЛО: Коридор деконтаминации -> Зона хранения
     // ------------------------------------------------------------------------
-    // Стены южного коридора (Z: -20..-8)
     addBox(-2.8, 0, -14.0, 1.2, 5.5, 12.0, wallMat);
     addBox(2.8, 0, -14.0, 1.2, 5.5, 12.0, wallMat);
 
-    // Зона хранения (Z: -32..-20, X: -13..13)
     addBox(-8.0, 0, -20.0, 9.5, 5.5, 1.2, wallMat);
     addBox(8.0, 0, -20.0, 9.5, 5.5, 1.2, wallMat);
     addBox(-13.5, 0, -26.0, 1.2, 5.5, 12.0, wallMat);
     addBox(13.5, 0, -26.0, 1.2, 5.5, 12.0, wallMat);
 
-    // Ящики в хранилище (укрытия)
-    addBox(-5.0, 0, -25.0, 1.6, 1.6, 1.6, crateMat);
-    addBox(-5.0, 1.6, -25.0, 1.2, 1.2, 1.2, crateMat);
-    addBox(5.5, 0, -26.5, 1.8, 1.8, 1.8, crateMat);
-    addBox(0.0, 0, -24.0, 1.4, 1.4, 1.4, crateMat);
+    // Интерактивные физические ящики в хранилище
+    const catacombCrates = [
+      [-5.0, 0, -25.0, 1.6],
+      [-5.0, 1.6, -25.0, 1.2],
+      [5.5, 0, -26.5, 1.8],
+      [0.0, 0, -24.0, 1.4],
+      [21.0, 0, 8.0, 1.3],
+      [-20.0, 0, -4.0, 1.2],
+    ];
+    if (propsMgr) {
+      for (const [x, y, z, s] of catacombCrates) propsMgr.addCrate(x, y, z, s, s, s);
+    }
     const storeLight = new THREE.PointLight(0xff2418, 42, 18, 2); storeLight.position.set(0, 4.5, -26.0); scene.add(storeLight); lights.push(storeLight);
 
-    // Портал спавна 2 (Хранилище)
     spawnPoints.push(V3(0, 0, -29.5));
 
     // ------------------------------------------------------------------------
     // ВОСТОЧНОЕ КРЫЛО: Ветвящийся лабиринт техобслуживания
     // ------------------------------------------------------------------------
-    // Выход на восток (X: 8..18, Z: -2.5..2.5)
     addBox(13.0, 0, -3.0, 10.0, 5.5, 1.2, wallMat);
     addBox(13.0, 0, 3.0, 10.0, 5.5, 1.2, wallMat);
 
-    // Восточный развилочный Т-образный тоннель (X: 18..28)
-    // Разделительная стена
     addBox(24.0, 0, 0, 1.2, 5.5, 14.0, wallMat);
     addBox(18.0, 0, 12.0, 1.2, 5.5, 14.0, wallMat);
     addBox(18.0, 0, -12.0, 1.2, 5.5, 14.0, wallMat);
@@ -231,42 +230,35 @@ export function buildArena(scene, T, mapId = 'arena') {
     const eastLightN = new THREE.PointLight(0xffa040, 30, 14, 2); eastLightN.position.set(21.0, 4.0, 12.0); scene.add(eastLightN); lights.push(eastLightN);
     const eastLightS = new THREE.PointLight(0xff4030, 30, 14, 2); eastLightS.position.set(21.0, 4.0, -12.0); scene.add(eastLightS); lights.push(eastLightS);
 
-    // Портал спавна 3 (Восточный тупик)
     spawnPoints.push(V3(25.5, 0, 15.0));
 
     // ------------------------------------------------------------------------
     // ЗАПАДНОЕ КРЫЛО: Двойные параллельные фланговые коридоры
-    // (Позволяют монстрам обходить игрока с тыла через перемычки!)
     // ------------------------------------------------------------------------
-    // Выход на запад (X: -16..-8)
     addBox(-12.0, 0, -3.0, 8.0, 5.5, 1.2, wallMat);
     addBox(-12.0, 0, 3.0, 8.0, 5.5, 1.2, wallMat);
 
-    // Внутренняя стена тоннеля 1 (X = -16) с двумя проходами для фланкирования
     addBox(-16.0, 0, -14.0, 1.2, 5.5, 10.0, wallMat);
     addBox(-16.0, 0, 0.0, 1.2, 5.5, 6.0, wallMat);
     addBox(-16.0, 0, 14.0, 1.2, 5.5, 10.0, wallMat);
 
-    // Разделительная стена между тоннелем 1 и 2 (X = -23) с проходами на Z=-7 и Z=7
     addBox(-23.0, 0, -18.0, 1.2, 5.5, 8.0, wallMat);
     addBox(-23.0, 0, 0.0, 1.2, 5.5, 8.0, wallMat);
     addBox(-23.0, 0, 18.0, 1.2, 5.5, 8.0, wallMat);
 
-    // Внешняя стена тоннеля 2 (X = -29.5)
     addBox(-29.5, 0, 0.0, 1.2, 5.5, 38.0, wallMat);
 
     const westLight1 = new THREE.PointLight(0x77dd55, 28, 14, 2); westLight1.position.set(-19.5, 4.0, 7.0); scene.add(westLight1); lights.push(westLight1);
     const westLight2 = new THREE.PointLight(0xff5533, 28, 14, 2); westLight2.position.set(-26.0, 4.0, -7.0); scene.add(westLight2); lights.push(westLight2);
 
-    // Портал спавна 4 (Западный фланговый тоннель)
     spawnPoints.push(V3(-26.0, 0, 0));
 
     // Аптечки в тактических перекрестках катакомб
     const catacombSpots = [
-      [-6.0, 0, 24.0], // в лаборатории
-      [5.5, 0, -23.5], // в хранилище
-      [21.0, 0, 6.0],  // на восточном перекрестке
-      [-19.5, 0, -7.0], // в западном коридоре
+      [-6.0, 0, 24.0],
+      [5.5, 0, -23.5],
+      [21.0, 0, 6.0],
+      [-19.5, 0, -7.0],
     ];
     const crossMatA = new THREE.MeshBasicMaterial({ color: 0xff3344 });
     const glowMat = new THREE.SpriteMaterial({ map: T.glow, color: 0xff3344, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });

@@ -108,6 +108,28 @@ export class AudioSys {
     this._noise(0.12, { freq: 1600, gain: 0.35, at: 0.07 });
   }
   boneCrack() { this._noise(0.08, { freq: 2600, q: 3, gain: 0.4 }); this._tone('triangle', 400, 90, 0.07, 0.3); }
+  woodHit() {
+    // Звук попадания пули в дерево: сухой треск + глухой резонанс
+    this._noise(0.07, { freq: 1900, q: 2.2, gain: 0.45, type: 'bandpass' });
+    this._tone('triangle', 320, 110, 0.08, 0.35);
+  }
+  crateThud(speed = 1.0) {
+    // Глухой тяжелый удар деревянного ящика о пол/стену
+    const vol = Math.min(1.0, 0.4 * speed);
+    this._noise(0.14, { freq: 380, q: 1.4, gain: 0.7 * vol, sweepTo: 70, type: 'lowpass' });
+    this._tone('sine', 130, 38, 0.18, 0.6 * vol);
+    this._tone('square', 240, 80, 0.05, 0.25 * vol);
+  }
+  woodSnap() {
+    // Сокрушительный раскол ящика в щепки
+    this._noise(0.25, { freq: 2400, q: 1.2, gain: 0.85, sweepTo: 140, type: 'lowpass' });
+    this._tone('sawtooth', 360, 60, 0.22, 0.5);
+    this._noise(0.12, { freq: 3800, gain: 0.45, at: 0.02 });
+  }
+  crateSlide() {
+    // Шуршание трения ящика о пол
+    this._noise(0.12, { freq: 550, q: 1.8, gain: 0.25, type: 'bandpass' });
+  }
   limbSever() {
     // сочный мокрый отрыв плоти + хруст кости + глухой удар
     this._noise(0.28, { freq: 1200, q: 0.8, gain: 0.9, sweepTo: 120, type: 'lowpass' });
