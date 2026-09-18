@@ -1,0 +1,30 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--mute-audio', '--disable-gpu'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+await page.goto('file:///home/user/vox-arena/release/index.html');
+await page.waitForFunction('window.__VOX__ && window.__VOX__.ready', null, { timeout: 25000 });
+await page.evaluate('window.__VOX__.start()');
+await page.waitForFunction('window.__VOX__.waves.num === 1', null, { timeout: 30000 });
+await page.waitForTimeout(800);
+await page.evaluate(`(() => { const V = window.__VOX__; V.player.hp = 0.5; for (let i=0;i<4;i++) V.spawn('minion', (i-1.5)*0.7, -1.2); })()`);
+await page.waitForFunction(`window.__VOX__.state === 'dead'`, null, { timeout: 40000 });
+await page.waitForTimeout(1200);
+await page.click('#btn-restart');
+await page.waitForTimeout(120);
+const near = await page.evaluate(`(() => {
+  const V = window.__VOX__;
+  const cam = V.player.camera;
+  const out = [];
+  V.fx.scene.updateMatrixWorld(true);
+  V.fx.scene.traverse(o => {
+    if (!(o.isMesh || o.isSkinnedMesh || o.isSprite) || !o.visible) return;
+    const wp = o.getWorldPosition(new o.position.constructor());
+    const d = wp.distanceTo(cam.position);
+    if (d < 6) out.push({ t: o.type, d: +d.toFixed(2), scale: +o.getWorldScale(new o.position.constructor()).x.toFixed(2), sk: !!o.isSkinnedMesh, parentType: o.parent ? o.parent.type : '-', gp: o.parent ? [o.parent.position.x, o.parent.position.y, o.parent.position.z].map(v => +v.toFixed(1)) : null });
+  });
+  const fx = V.fx;
+  return { n: out.length, out: out.slice(0, 20), vox: fx.count };
+})()`);
+console.log(JSON.stringify(near, null, 1));
+await page.screenshot({ path: 'shots/g-120ms.png' });
+await browser.close();

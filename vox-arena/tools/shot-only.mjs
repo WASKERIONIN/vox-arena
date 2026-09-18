@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--mute-audio', '--disable-gpu'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+await page.goto('file:///home/user/vox-arena/release/index.html');
+await page.waitForFunction('window.__VOX__ && window.__VOX__.ready', null, { timeout: 25000 });
+await page.evaluate('window.__VOX__.start(); window.__VOX__.gfx.pixelScale(0.35)');
+await page.waitForTimeout(4300);
+await page.evaluate(`for (let i = 0; i < 3; i++) window.__VOX__.spawn('minion', -1.5 + i * 1.5, -8 - i * 2)`);
+await page.evaluate(`window.__VOX__.spawn('warrior', 2.5, -12); window.__VOX__.spawn('mage', -3, -16)`);
+await page.waitForTimeout(1500);
+await page.screenshot({ path: 'shots/20-bright.png' });
+await browser.close();

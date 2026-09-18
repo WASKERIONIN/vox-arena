@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ВОКСЕЛЬНАЯ БОЙНЯ</title>
+<style>
+  :root{
+    --red:#ff2418; --red-dark:#8c0f0a; --amber:#ffb03a; --bone:#e8ddc8; --bg:#0a0507;
+    --panel:rgba(12,7,9,.92); --line:#3a1410;
+  }
+  *{box-sizing:border-box; -webkit-user-select:none; user-select:none;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
+    font-family:'Segoe UI',Arial,sans-serif;color:var(--bone);}
+  #game-canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;cursor:crosshair;}
+  .hidden{display:none !important;}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;}
+  .mono{font-family:Consolas,'Courier New',monospace;}
+
+  #crosshair{position:absolute;left:50%;top:50%;width:0;height:0;}
+  #crosshair .l{position:absolute;background:#fff;box-shadow:0 0 2px #000;}
+  #crosshair .l.t{left:-1px;top:-9px;width:2px;height:6px;}
+  #crosshair .l.b{left:-1px;top:3px;width:2px;height:6px;}
+  #crosshair .l.lf{left:-9px;top:-1px;width:6px;height:2px;}
+  #crosshair .l.rt{left:3px;top:-1px;width:6px;height:2px;}
+  #crosshair .dot{position:absolute;left:-1px;top:-1px;width:2px;height:2px;background:var(--red);}
+
+  #hitmarker{position:absolute;left:50%;top:50%;width:0;height:0;opacity:0;}
+  #hitmarker span{position:absolute;width:9px;height:2px;background:#fff;box-shadow:0 0 3px #000;}
+  #hitmarker .a{transform:translate(4px,4px) rotate(45deg);}
+  #hitmarker .b{transform:translate(-13px,4px) rotate(-45deg);}
+  #hitmarker .c{transform:translate(4px,-6px) rotate(-45deg);}
+  #hitmarker .d{transform:translate(-13px,-6px) rotate(45deg);}
+  #hitmarker.kill span{background:var(--red);}
+  #hitmarker.show{opacity:1;}
+
+  #bottom-left{position:absolute;left:22px;bottom:20px;}
+  #hp-label{font-size:11px;letter-spacing:3px;color:#c9b8a0;text-shadow:0 1px 0 #000;}
+  #hp-row{display:flex;align-items:center;gap:10px;}
+  #hp-bar{width:260px;height:16px;background:rgba(0,0,0,.55);border:1px solid #51190f;outline:1px solid #000;}
+  #hp-bar-fill{height:100%;width:100%;background:linear-gradient(90deg,#ff2418,#ff5a30);transition:width .12s steps(6);}
+  #hp-num{font-size:26px;font-weight:900;color:#fff;text-shadow:0 0 6px rgba(255,40,20,.8),1px 1px 0 #000;min-width:52px;}
+
+  #bottom-right{position:absolute;right:22px;bottom:18px;text-align:right;}
+  #weapon-name{font-size:11px;letter-spacing:2px;color:#c9b8a0;text-shadow:0 1px 0 #000;margin-bottom:2px;}
+  #ammo-row{display:flex;align-items:baseline;justify-content:flex-end;gap:6px;}
+  #ammo-num{font-size:44px;font-weight:900;color:#fff;text-shadow:0 0 8px rgba(255,176,58,.55),2px 2px 0 #000;line-height:1;}
+  #ammo-mag{font-size:18px;color:#c9b8a0;text-shadow:1px 1px 0 #000;}
+  #reload-note{font-size:12px;letter-spacing:2px;color:var(--amber);height:14px;text-shadow:1px 1px 0 #000;}
+
+  #top-left{position:absolute;left:22px;top:18px;text-shadow:1px 1px 0 #000;}
+  #wave-label{font-size:20px;font-weight:800;letter-spacing:2px;color:#fff;}
+  #kills-label{font-size:13px;color:#c9b8a0;letter-spacing:1px;}
+  #score-label{font-size:13px;color:#c9b8a0;letter-spacing:1px;}
+
+  #style{position:absolute;right:22px;top:70px;width:52px;text-align:center;}
+  #style-rank{font-size:42px;font-weight:900;line-height:1;text-shadow:2px 2px 0 #000, 0 0 14px currentColor;}
+  #style-gauge{width:10px;height:120px;margin:8px auto 4px;background:rgba(0,0,0,.5);border:1px solid #51190f;position:relative;}
+  #style-bar-fill{position:absolute;bottom:0;left:0;width:100%;background:currentColor;}
+  #style-label{font-size:9px;letter-spacing:2px;color:#c9b8a0;}
+  #style-event{font-size:12px;color:var(--amber);height:16px;text-shadow:1px 1px 0 #000;}
+
+  #banner{position:absolute;left:0;right:0;top:16%;text-align:center;opacity:0;transform:scale(1.15);}
+  #banner.show{animation:bannerIn 2.4s ease-out forwards;}
+  #banner-main{font-size:52px;font-weight:900;letter-spacing:8px;color:#fff;text-shadow:0 0 18px rgba(255,36,24,.9),3px 3px 0 #000;}
+  #banner-sub{font-size:15px;letter-spacing:5px;color:var(--amber);text-shadow:1px 1px 0 #000;}
+  @keyframes bannerIn{0%{opacity:0;transform:scale(1.3);}12%{opacity:1;transform:scale(1);}75%{opacity:1;}100%{opacity:0;transform:scale(.98);}}
+
+  #countdown{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:64px;font-weight:900;color:var(--amber);text-shadow:3px 3px 0 #000,0 0 22px rgba(255,176,58,.6);}
+
+  #hint{position:absolute;left:0;right:0;bottom:64px;text-align:center;font-size:12px;letter-spacing:1px;color:rgba(232,221,200,.75);text-shadow:1px 1px 0 #000;}
+
+  #fps{position:absolute;right:8px;top:6px;font-size:11px;color:#7f7;padding:2px 6px;background:rgba(0,0,0,.4);}
+
+  #damage-flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 40%,rgba(255,10,5,.55) 100%);opacity:0;transition:opacity .35s;z-index:6;}
+  #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(0,0,0,.5) 100%);z-index:4;}
+  #lowhp{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 55%,rgba(255,0,0,.28) 100%);opacity:0;z-index:4;}
+
+  /* ---------- Экраны ---------- */
+  .screen{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--panel);}
+  .screen.overlay{background:rgba(8,4,5,.78);}
+  .title{font-family:Impact,'Arial Black',sans-serif;font-size:64px;letter-spacing:4px;color:#fff;line-height:.95;text-align:center;
+    text-shadow:0 0 30px rgba(255,36,24,.75),4px 4px 0 var(--red-dark);}
+  .title em{font-style:normal;color:var(--red);}
+  .subtitle{margin-top:10px;font-size:13px;letter-spacing:6px;color:#c9b8a0;}
+  .menu-btns{margin-top:44px;display:flex;flex-direction:column;gap:12px;min-width:300px;}
+  .btn{pointer-events:auto;cursor:pointer;border:1px solid #6b2015;background:linear-gradient(180deg,#1c0d0b,#120709);
+    color:var(--bone);font-size:17px;font-weight:700;letter-spacing:4px;padding:13px 30px;text-align:center;
+    transition:all .08s;text-transform:uppercase;font-family:inherit;}
+  .btn:hover{background:var(--red);color:#fff;border-color:var(--red);box-shadow:0 0 18px rgba(255,36,24,.5);}
+  .btn.primary{background:linear-gradient(180deg,#a01108,#6f0b05);border-color:var(--red);color:#fff;font-size:21px;padding:16px 30px;}
+  .btn.primary:hover{background:var(--red);}
+  .btn.small{font-size:13px;padding:9px 18px;letter-spacing:2px;}
+  .footnote{position:absolute;bottom:16px;font-size:11px;letter-spacing:1px;color:rgba(201,184,160,.5);}
+
+  /* ---------- Настройки ---------- */
+  #settings .panel, #help .panel{width:min(680px,92vw);max-height:86vh;overflow:auto;border:1px solid var(--line);
+    background:var(--panel);padding:22px 26px;pointer-events:auto;}
+  .panel h2{margin:0 0 16px;font-size:20px;letter-spacing:4px;color:#fff;border-bottom:1px solid var(--line);padding-bottom:10px;}
+  .set-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px dotted rgba(107,32,21,.35);}
+  .set-row label{font-size:14px;letter-spacing:1px;color:var(--bone);}
+  .set-row .val{font-family:Consolas,monospace;font-size:12px;color:var(--amber);min-width:44px;text-align:right;}
+  .set-ctrl{display:flex;align-items:center;gap:10px;}
+  input[type=range]{width:180px;accent-color:var(--red);cursor:pointer;}
+  .toggle{width:44px;height:20px;border:1px solid #6b2015;background:#150a08;position:relative;cursor:pointer;}
+  .toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:14px;background:#5a4a3a;transition:all .1s;}
+  .toggle.on::after{left:24px;background:var(--red);box-shadow:0 0 8px rgba(255,36,24,.8);}
+  .presets{display:flex;gap:8px;margin:14px 0 4px;}
+  .presets .btn{flex:1;}
+
+  /* ---------- Смерть / пауза ---------- */
+  #death .title{text-shadow:0 0 34px rgba(255,36,24,1),5px 5px 0 #000;}
+  #death-stats{margin-top:22px;font-size:16px;letter-spacing:2px;line-height:2;color:var(--bone);text-align:center;}
+  #death-stats b{color:var(--amber);font-family:Consolas,monospace;}
+  #loading .bar{width:280px;height:10px;border:1px solid #6b2015;margin-top:22px;}
+  #loading .bar div{height:100%;width:40%;background:var(--red);animation:load 1.1s infinite linear;}
+  @keyframes load{0%{width:5%;}50%{width:70%;}100%{width:5%;}}
+  #fallback-note{position:absolute;bottom:40px;font-size:12px;color:var(--amber);letter-spacing:1px;text-shadow:1px 1px 0 #000;}
+  kbd{font-family:Consolas,monospace;background:#1a0e0b;border:1px solid #6b2015;padding:1px 6px;font-size:12px;color:#fff;}
+  .help-cols{display:grid;grid-template-columns:1fr 1fr;gap:6px 26px;font-size:14px;line-height:1.9;}
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="crosshair"><span class="l t"></span><span class="l b"></span><span class="l lf"></span><span class="l rt"></span><span class="dot"></span></div>
+  <div id="hitmarker"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
+
+  <div id="top-left">
+    <div id="wave-label">ВОЛНА 1</div>
+    <div id="kills-label">УБИТО: 0</div>
+    <div id="score-label">ОЧКИ: 0</div>
+  </div>
+
+  <div id="style">
+    <div id="style-rank" style="color:#8a8a8a">D</div>
+    <div id="style-gauge"><div id="style-bar-fill" style="color:#8a8a8a;width:0%"></div></div>
+    <div id="style-label">СТИЛЬ</div>
+    <div id="style-event"></div>
+  </div>
+
+  <div id="bottom-left">
+    <div id="hp-label">БРОНЕПЛАСТИНА</div>
+    <div id="hp-row">
+      <div id="hp-bar"><div id="hp-bar-fill"></div></div>
+      <div id="hp-num" class="mono">100</div>
+    </div>
+  </div>
+
+  <div id="bottom-right">
+    <div id="weapon-name">ШТУРМОВОЙ МОДУЛЬ «СЕКТОР-9» · 6.8 ММ</div>
+    <div id="ammo-row"><span id="ammo-num" class="mono">30</span><span id="ammo-mag" class="mono">/ ∞</span></div>
+    <div id="reload-note"></div>
+  </div>
+
+  <div id="banner"><div id="banner-main"></div><div id="banner-sub"></div></div>
+  <div id="countdown" class="mono"></div>
+  <div id="hint"></div>
+  <div id="fallback-note" class="hidden"></div>
+  <div id="fps" class="mono hidden">60</div>
+</div>
+
+<div id="vignette" class="hidden"></div>
+<div id="lowhp"></div>
+<div id="damage-flash"></div>
+<div id="fade" style="position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:9;"></div>
+
+<div id="loading" class="screen">
+  <div class="title">ВОКСЕЛЬНАЯ <em>БОЙНЯ</em></div>
+  <div class="subtitle">ЗАГРУЗКА АССЕТОВ…</div>
+  <div class="bar"><div></div></div>
+</div>
+
+<div id="menu" class="screen hidden">
+  <div class="title">ВОКСЕЛЬНАЯ <em>БОЙНЯ</em></div>
+  <div class="subtitle">АРЕНА · ПРОТОТИП 0.1</div>
+  <div class="menu-btns">
+    <button class="btn primary" id="btn-play">В БОЙ</button>
+    <button class="btn" id="btn-settings">НАСТРОЙКИ</button>
+    <button class="btn" id="btn-help">УПРАВЛЕНИЕ</button>
+  </div>
+  <div class="footnote">SKIASH TELEPORT · CC0-ассеты: KayKit Skeletons · звук синтезируется в реальном времени</div>
+</div>
+
+<div id="settings" class="screen overlay hidden">
+  <div class="panel">
+    <h2>НАСТРОЙКИ</h2>
+    <div class="presets">
+      <button class="btn small preset" data-q="0">НИЗКОЕ</button>
+      <button class="btn small preset" data-q="1">СРЕДНЕЕ</button>
+      <button class="btn small preset" data-q="2">ВЫСОКОЕ</button>
+    </div>
+    <div id="settings-rows"></div>
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="btn small" id="btn-fullscreen">НА ВЕСЬ ЭКРАН</button>
+      <button class="btn small" id="btn-settings-close">НАЗАД</button>
+    </div>
+  </div>
+</div>
+
+<div id="help" class="screen overlay hidden">
+  <div class="panel">
+    <h2>УПРАВЛЕНИЕ</h2>
+    <div class="help-cols">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — движение</div>
+      <div><kbd>МЫШЬ</kbd> — обзор</div>
+      <div><kbd>ЛКМ</kbd> — огонь</div>
+      <div><kbd>R</kbd> — перезарядка</div>
+      <div><kbd>SHIFT</kbd> — спринт</div>
+      <div><kbd>ПРОБЕЛ</kbd> — прыжок</div>
+      <div><kbd>←</kbd><kbd>→</kbd> — поворот (резерв)</div>
+      <div><kbd>ESC</kbd> — пауза</div>
+    </div>
+    <p style="font-size:13px;line-height:1.7;color:#c9b8a0">
+      Хедшот (верхняя часть черепа) наносит ×2.6 урона и мгновенно хоронит мелких.
+      Подбирайте красные аптечки. Стиль растёт за убийства и падает со временем — держите темп.
+      Маги кидают плазму: стрейфьтесь. Громила ломает щитом — не подходите в упор.
+    </p>
+    <div style="margin-top:14px"><button class="btn small" id="btn-help-close">НАЗАД</button></div>
+  </div>
+</div>
+
+<div id="pause" class="screen overlay hidden">
+  <div class="title" style="font-size:44px">ПАУЗА</div>
+  <div class="menu-btns">
+    <button class="btn primary" id="btn-resume">ПРОДОЛЖИТЬ</button>
+    <button class="btn" id="btn-pause-settings">НАСТРОЙКИ</button>
+    <button class="btn" id="btn-quit">В МЕНЮ</button>
+  </div>
+</div>
+
+<div id="death" class="screen overlay hidden">
+  <div class="title">ВЫ <em>ПОГИБЛИ</em></div>
+  <div id="death-stats"></div>
+  <div class="menu-btns">
+    <button class="btn primary" id="btn-restart">ЗАНОВО</button>
+    <button class="btn" id="btn-death-menu">В МЕНЮ</button>
+  </div>
+</div>
+
+<script type="module">
+/*__BUNDLE__*/
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--mute-audio', '--disable-gpu'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+page.on('pageerror', e => errors.push('PAGEERROR: ' + String(e && e.stack || e).slice(0, 600)));
+page.on('console', m => { if (m.type() === 'error') errors.push('CONSOLE: ' + m.text().slice(0, 300)); });
+await page.goto('file:///home/user/vox-arena/release/index.html');
+await page.waitForTimeout(8000);
+console.log('VOX exists:', await page.evaluate('typeof window.__VOX__'));
+console.log('errors:', errors.length ? errors.join('\n---\n') : 'нет');
+await browser.close();
