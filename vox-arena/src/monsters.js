@@ -965,6 +965,9 @@ export function poseMonster(e, dt, t) {
 
   switch (e.state) {
     case 'spawn': poseSpawn(e, dt, t); break;
+    case 'patrol':
+    case 'wander':
+    case 'investigate':
     case 'chase': poseWalk(e, dt, t, P, type); break;
     case 'attack': poseAttack(e, t, P, type); break;
     case 'headless_rampage': poseHeadlessRampage(e, dt, t, P, type); break;

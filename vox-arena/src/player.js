@@ -507,6 +507,7 @@ export class Player {
         if (hit) {
           this.shake = Math.min(0.45, this.shake + 0.18);
         }
+        enemies.alertSound(this.pos, 14);
       }
 
       if (this.kickT >= this.kickDur) {
@@ -544,6 +545,9 @@ export class Player {
     sfx.shot();
     this.recoilVel += rand(1.9, 2.5);
     this.kickZ = 0.05;
+
+    // Звук выстрела привлекает внимание врагов в радиусе слышимости
+    enemies.alertSound(origin, 32);
 
     if (this.onShoot) this.onShoot();
 
@@ -587,6 +591,9 @@ export class Player {
     this.camera.getWorldDirection(_fwd);
     fx.shotgunMuzzle(_muzzleP, _fwd);
     sfx.shotgun();
+
+    // Громкий выстрел обреза привлекает всех тварей в радиусе 45м
+    enemies.alertSound(origin, 45);
 
     // Тяжелая отдача дробовика
     this.recoilVel += rand(5.5, 7.5);

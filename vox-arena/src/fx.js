@@ -16,7 +16,7 @@ export class FX {
     this.budget = 1; // множитель количества
     this.MAX = 4500;
 
-    // ---- Главный пул воксельных частиц (Instanced Mesh) ----
+    // ---- Главный пул воксельных частиц (Instanced Mesh с Lambert-освещением) ----
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshLambertMaterial();
     this.mesh = new THREE.InstancedMesh(geo, mat, this.MAX);
@@ -62,21 +62,21 @@ export class FX {
     scene.add(this.light);
     this.lightT = 0;
 
-    // ---- Декали пулевых отверстий и брызг ----
+    // ---- Декали пулевых отверстий и брызг (реагируют на светотень) ----
     this.holes = []; this.holeI = 0;
-    const holeMat = new THREE.MeshBasicMaterial({ map: tex.hole, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const holeMat = new THREE.MeshLambertMaterial({ map: tex.hole, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     for (let i = 0; i < 60; i++) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), holeMat);
       m.visible = false; m.renderOrder = 2; scene.add(m); this.holes.push(m);
     }
 
-    // ---- Физические динамические лужи крови на полу (Dynamic Blood Puddles) ----
+    // ---- Физические динамические лужи крови на полу (MeshLambertMaterial: реагируют на фонарь и светотень) ----
     this.bloodPuddles = [];
-    const puddleMat = new THREE.MeshBasicMaterial({
+    const puddleMat = new THREE.MeshLambertMaterial({
       map: tex.splat,
-      color: 0x6e0d08,
+      color: 0x3d0605, // Реалистичный тёмный оттенок запекшейся крови (не светится сам по себе!)
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.88,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -2,
@@ -150,11 +150,12 @@ export class FX {
 
   // ==========================================================================
   // Физическая динамика 3D жидкостей (Physical 3D Voxel Fluid Simulation)
+  // Тёмные реалистичные оттенки крови, реагирующие на освещение
   // ==========================================================================
   fluidSpurt(origin, dir, count = 28, speed = 4.5, spread = 1.2, isArterial = false) {
     count = Math.round(count * this.budget);
     const crimsonPalette = [
-      this._c(0xd81410), this._c(0xb50f0d), this._c(0x8f0b09), this._c(0x650807), this._c(0x3e0404),
+      this._c(0x6e0d0a), this._c(0x550806), this._c(0x3e0504), this._c(0x7a100d), this._c(0x280303),
     ];
 
     for (let i = 0; i < count; i++) {
@@ -189,7 +190,7 @@ export class FX {
   }
 
   corpseBubble(p) {
-    const cols = [this._c(0x8a0d0a), this._c(0xc81410), this._c(0x400505)];
+    const cols = [this._c(0x550806), this._c(0x3e0504), this._c(0x250202)];
     const n = Math.round(4 * this.budget);
     for (let i = 0; i < n; i++) {
       this.voxel(
@@ -202,8 +203,8 @@ export class FX {
 
   gib(p, big = false) {
     const n = Math.round((big ? 90 : 60) * this.budget) + 12;
-    const meat = [this._c(0xa11414), this._c(0x7d0f0a), this._c(0xd42a2a), this._c(0x450606)];
-    const bone = [this._c(0xd8cfc0), this._c(0xbfb5a2), this._c(0x8f8676)];
+    const meat = [this._c(0x5a0b0b), this._c(0x420808), this._c(0x6e1212), this._c(0x260303)];
+    const bone = [this._c(0xbdb2a0), this._c(0x9a8f7e), this._c(0x756b5c)];
 
     for (let i = 0; i < n; i++) {
       const isBone = Math.random() < 0.28;
@@ -216,14 +217,14 @@ export class FX {
       );
     }
 
-    // Сопутствующий взрывной выброс 3D флюида
+    // Сопутствующий выброс 3D флюида
     this.fluidSpurt(p, UP, big ? 55 : 35, 6.0, 3.5, true);
     this.bloodFloor(p.x, p.z, big ? rand(2.0, 2.8) : rand(1.3, 1.9));
   }
 
   dissolve(p, radius, height) {
     const n = Math.round(46 * this.budget);
-    const cols = [this._c(0xd8cfc0), this._c(0xbfb5a2), this._c(0x7d0f0a), this._c(0x3a3226)];
+    const cols = [this._c(0x9a8f7e), this._c(0x756b5c), this._c(0x4a0808), this._c(0x241e16)];
     for (let i = 0; i < n; i++) {
       const a = rand(0, Math.PI * 2), r = Math.sqrt(Math.random()) * radius;
       this.voxel(
@@ -509,7 +510,7 @@ export class FX {
       }
 
       // Постепенное засыхание и растворение
-      const alpha = Math.min(0.92, p.life / 3.0);
+      const alpha = Math.min(0.88, p.life / 3.0);
       p.mesh.material.opacity = alpha;
 
       if (p.life <= 0) {

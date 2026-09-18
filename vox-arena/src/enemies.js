@@ -3,21 +3,20 @@ import { rand, pick } from './config.js';
 import { buildMonster, poseMonster, createStumpCap } from './monsters.js';
 import { Ragdoll, SeveredLimbProp } from './ragdoll.js';
 
-// 4 типа тварей: уникальные тактики, скорости, poise и анимации
+// 4 типа тварей: уникальные характеристики и скорости
 export const TYPES = {
-  minion:  { hp: 36,  speed: 4.8, dmg: 8,  score: 100, radius: 0.4,  height: 1.85, baseY: 0,
+  minion:  { hp: 36,  speed: 4.2, dmg: 8,  score: 100, radius: 0.4,  height: 1.85, baseY: 0,
              atkDur: 0.6, dieDur: 1.5, range: 1.9, cd: [0.7, 1.2], maxPoise: 42, label: 'СКОРОХОД' },
-  rogue:   { hp: 30,  speed: 4.2, dmg: 10, score: 120, radius: 0.42, height: 1.55, baseY: 0,
+  rogue:   { hp: 30,  speed: 3.8, dmg: 10, score: 120, radius: 0.42, height: 1.55, baseY: 0,
              atkDur: 0.85, dieDur: 1.5, range: 1.85, cd: [0.7, 1.2], maxPoise: 48, label: 'РЕЗАК' },
-  warrior: { hp: 150, speed: 2.3, dmg: 24, score: 250, radius: 0.62, height: 2.3, baseY: 0,
+  warrior: { hp: 150, speed: 2.2, dmg: 24, score: 250, radius: 0.62, height: 2.3, baseY: 0,
              atkDur: 1.3, dieDur: 1.9, range: 2.5, cd: [1.2, 1.8], maxPoise: 110, label: 'КЛЕЩ' },
-  mage:    { hp: 60,  speed: 2.2, dmg: 16, score: 200, radius: 0.5,  height: 2.1, baseY: 0.45,
-             atkDur: 1.4, dieDur: 1.3, ranged: true, keepMin: 8, keepMax: 14, cd: [1.8, 2.6], maxPoise: 55, label: 'ПЛОД' },
+  mage:    { hp: 60,  speed: 2.0, dmg: 16, score: 200, radius: 0.5,  height: 2.1, baseY: 0.45,
+             atkDur: 1.4, dieDur: 1.3, ranged: true, keepMin: 7, keepMax: 13, cd: [1.8, 2.6], maxPoise: 55, label: 'ПЛОД' },
 };
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
-const _v3 = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const SPAWN_T = 0.9;
 
@@ -32,7 +31,7 @@ export class EnemyManager {
     this.projectiles = [];
     this.severedProps = [];
     this.time = 0;
-    this._dripC = new THREE.Color(0x5e0a08);
+    this._dripC = new THREE.Color(0x3e0605);
   }
 
   spawn(typeName, x, z, wave = 1) {
@@ -60,12 +59,14 @@ export class EnemyManager {
     group.add(sh);
 
     group.position.set(x, 0, z);
+    const startRot = rand(0, Math.PI * 2);
+    group.rotation.y = startRot;
     this.scene.add(group);
 
-    // Распределяем тактические фланговые углы окружения (Surrounding Slots)
+    // Фланговые секторы окружения
     const activeCount = this.list.length;
-    const flankSlots = [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, 2.8];
-    const flankAngle = flankSlots[activeCount % flankSlots.length] + rand(-0.15, 0.15);
+    const flankSlots = [0, 0.55, -0.55, 1.1, -1.1, 1.7, -1.7];
+    const flankAngle = flankSlots[activeCount % flankSlots.length] + rand(-0.1, 0.1);
 
     const e = {
       typeName, T, group,
@@ -73,22 +74,22 @@ export class EnemyManager {
       shadowMesh: sh,
       pos: group.position,
       hp: T.hp * (1 + wave * 0.07), maxHp: T.hp * (1 + wave * 0.07),
-      speed: T.speed * Math.min(1.15, 1 + wave * 0.015),
+      speed: T.speed * Math.min(1.12, 1 + wave * 0.012),
       state: 'spawn', t: 0, animT: 0, animDur: SPAWN_T, atkDur: T.atkDur,
       cdT: rand(T.cd[0], T.cd[1]) * 0.6,
       phase: rand(0, 6.28), seed: rand(0, 20),
-      twitch: 0, spasm: 0, twist: rand(-0.16, 0.16), tilt: rand(-0.14, 0.14),
+      twitch: 0, spasm: 0, twist: rand(-0.14, 0.14), tilt: rand(-0.12, 0.12),
       baseY: T.baseY || 0,
-      growlT: rand(2, 7), strafeDir: Math.random() < 0.5 ? 1 : -1,
+      growlT: rand(3, 8), strafeDir: Math.random() < 0.5 ? 1 : -1,
       appliedHit: false, flashT: 0, staggerT: 0,
 
-      // --- Тактический ИИ (Tactical Flocking & Flanking) ---
+      // --- Сенсорное восприятие и зрение (Line of Sight & Awareness) ---
+      hasLOS: false,
+      lastKnownPlayerPos: null,
+      investigateT: 0,
+      patrolTarget: new THREE.Vector3(x + rand(-8, 8), 0, z + rand(-8, 8)),
+      patrolWaitT: 0,
       flankAngle,
-      dodgeTimer: 0,
-      dodgeDir: Math.random() < 0.5 ? 1 : -1,
-      hitAndRunTimer: 0,
-      targetOffsetX: 0,
-      targetOffsetZ: 0,
 
       // --- Физика отдачи и равновесие (Poise) ---
       poise: 0, maxPoise: T.maxPoise,
@@ -119,11 +120,29 @@ export class EnemyManager {
 
   get aliveCount() {
     let n = 0;
-    for (const e of this.list) if (e.state !== 'dying' && e.state !== 'dead' && e.state !== 'corpse_ragdoll' && e.state !== 'headless_rampage') n++;
+    for (const e of this.list) {
+      if (e.state !== 'dying' && e.state !== 'dead' && e.state !== 'corpse_ragdoll' && e.state !== 'headless_rampage') n++;
+    }
     return n;
   }
 
-  // Отрыв конечности и спавн физического обломка в мире
+  // Звуковое оповещение монстров от выстрелов и шума (Alert on gunshot/kick)
+  alertSound(soundOrigin, radius = 35) {
+    for (const e of this.list) {
+      if (e.state === 'dead' || e.state === 'dying' || e.state === 'corpse_ragdoll') continue;
+      const dx = soundOrigin.x - e.pos.x, dz = soundOrigin.z - e.pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist <= radius) {
+        e.lastKnownPlayerPos = soundOrigin.clone();
+        if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
+          e.state = 'investigate';
+          e.investigateT = rand(6, 10);
+        }
+      }
+    }
+  }
+
+  // Отрыв конечности и спавн физического обломка
   severLimb(e, zone, impulseDir = UP, hitPoint = null) {
     if (e.severed[zone]) return;
     e.severed[zone] = true;
@@ -282,11 +301,6 @@ export class EnemyManager {
       if (!alive) this.severedProps.splice(i, 1);
     }
 
-    // Вектор направления взгляда игрока (для проверки прицеливания и уклонений)
-    const playerFwd = new THREE.Vector3();
-    player.camera.getWorldDirection(playerFwd);
-    playerFwd.y = 0; playerFwd.normalize();
-
     // Обновление врагов
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
@@ -300,7 +314,7 @@ export class EnemyManager {
         e.poise = Math.max(0, e.poise - dt * 26);
       }
 
-      const canKnockback = (e.state === 'chase' || e.state === 'attack' || e.state === 'spawn');
+      const canKnockback = (e.state === 'chase' || e.state === 'patrol' || e.state === 'investigate' || e.state === 'attack' || e.state === 'spawn');
       if (canKnockback && e.knockbackVel.lengthSq() > 0.001) {
         e.pos.x += e.knockbackVel.x * dt;
         e.pos.z += e.knockbackVel.z * dt;
@@ -317,22 +331,127 @@ export class EnemyManager {
         e.angularVel = 0;
       }
 
+      // ======================================================================
+      // ПРОВЕРКА ПРЯМОЙ ВИДИМОСТИ (Line of Sight) И СЕНСОРНОЕ ВОСПРИЯТИЕ
+      // Никакого «магнита» сквозь стены!
+      // ======================================================================
       const dx = player.pos.x - e.pos.x, dz = player.pos.z - e.pos.z;
       const dist = Math.hypot(dx, dz);
       const nx = dx / (dist || 1), nz = dz / (dist || 1);
 
-      // Проверка: целится ли игрок прямо в этого монстра
-      const dotAim = (-nx * playerFwd.x - nz * playerFwd.z);
-      const isPlayerAimingAt = dotAim > 0.88;
+      const eyeY = e.pos.y + e.T.height * 0.72;
+      const targetEyeY = player.pos.y + 1.2;
+      const originRay = _v.set(e.pos.x, eyeY, e.pos.z);
+      const dirRay = _v2.set(dx, targetEyeY - eyeY, dz).normalize();
+
+      // Проверка лучом через геометрию стен карты
+      const wallHit = arena.raycastWorld(originRay, dirRay, dist);
+      const clearLOS = (!wallHit || wallHit.dist >= dist - 0.4);
+
+      // Вектор текущего направления взгляда монстра
+      const currentFacingX = Math.sin(e.group.rotation.y);
+      const currentFacingZ = Math.cos(e.group.rotation.y);
+      const dotVision = (nx * currentFacingX + nz * currentFacingZ);
+
+      // Условия обнаружения игрока:
+      // 1) Прямой взгляд (конус зрения ~130 градусов, dot > -0.2) + дистанция
+      // 2) Если у игрока включен фонарик — монстры замечают свет с большей дистанции (до 30м)
+      // 3) Ближняя зона слуха (шаги/дыхание в упор < 3.2м) даже со спины
+      let maxVisionRange = player.flashlightOn ? 30.0 : 20.0;
+      if (arena.mapId === 'catacombs' && !player.flashlightOn) maxVisionRange = 14.0;
+
+      const inVisionCone = dotVision > -0.2;
+      const canSeePlayer = clearLOS && ((inVisionCone && dist < maxVisionRange) || (dist < 3.2));
+
+      if (canSeePlayer) {
+        e.hasLOS = true;
+        e.lastKnownPlayerPos = player.pos.clone();
+        if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
+          e.state = 'chase';
+          sfx.growl(e.typeName === 'warrior' ? 60 : e.typeName === 'mage' ? 120 : 90);
+        }
+      } else {
+        e.hasLOS = false;
+      }
 
       switch (e.state) {
         case 'spawn': {
           e.t += dt; e.animT += dt;
           poseMonster(e, dt, t);
-          if (e.t >= SPAWN_T) { e.state = 'chase'; e.t = 0; }
+          if (e.t >= SPAWN_T) {
+            e.state = e.hasLOS ? 'chase' : 'patrol';
+            e.t = 0;
+          }
           break;
         }
 
+        // --------------------------------------------------------------------
+        // ПАТРУЛИРОВАНИЕ / БЛУЖДАНИЕ (Враг не видит игрока и не знает где он)
+        // Идёт передом в сторону движения на нормальной скорости
+        // --------------------------------------------------------------------
+        case 'patrol':
+        case 'wander': {
+          if (e.staggerT > 0) { e.staggerT -= dt; break; }
+
+          if (e.patrolWaitT > 0) {
+            e.patrolWaitT -= dt;
+            // Стоит на месте, осматривается
+            break;
+          }
+
+          const targetX = e.patrolTarget.x, targetZ = e.patrolTarget.z;
+          const pdx = targetX - e.pos.x, pdz = targetZ - e.pos.z;
+          const pDist = Math.hypot(pdx, pdz);
+
+          if (pDist < 1.2 || Math.random() < dt * 0.08) {
+            // Выбираем новую точку патрулирования
+            const sp = pick(arena.spawnPoints) || { x: 0, z: 0 };
+            e.patrolTarget.set(sp.x + rand(-6, 6), 0, sp.z + rand(-6, 6));
+            e.patrolWaitT = rand(1.0, 2.5);
+            break;
+          }
+
+          const moveX = pdx / pDist, moveZ = pdz / pDist;
+          const patrolSpeed = e.speed * 0.65;
+
+          this._moveAndOrient(e, moveX, moveZ, patrolSpeed, dt, arena);
+          break;
+        }
+
+        // --------------------------------------------------------------------
+        // РАССЛЕДОВАНИЕ ШУМА ИЛИ ПОСЛЕДНЕЙ ТОЧКИ (Investigate)
+        // Идёт к месту, где был слышен выстрел или где игрок скрылся за угол
+        // --------------------------------------------------------------------
+        case 'investigate': {
+          if (e.staggerT > 0) { e.staggerT -= dt; break; }
+
+          e.investigateT -= dt;
+          if (e.investigateT <= 0 || !e.lastKnownPlayerPos) {
+            e.state = 'patrol';
+            e.patrolWaitT = rand(1.5, 3.0);
+            break;
+          }
+
+          const idx = e.lastKnownPlayerPos.x - e.pos.x;
+          const idz = e.lastKnownPlayerPos.z - e.pos.z;
+          const iDist = Math.hypot(idx, idz);
+
+          if (iDist < 1.4) {
+            // Достиг места, игрока нет — осматривается и возвращается в патруль
+            e.lastKnownPlayerPos = null;
+            e.state = 'patrol';
+            e.patrolWaitT = rand(2.0, 4.0);
+            break;
+          }
+
+          const moveX = idx / iDist, moveZ = idz / iDist;
+          this._moveAndOrient(e, moveX, moveZ, e.speed * 0.85, dt, arena);
+          break;
+        }
+
+        // --------------------------------------------------------------------
+        // ПРЕСЛЕДОВАНИЕ (Chase — есть прямая видимость или активный контакт)
+        // --------------------------------------------------------------------
         case 'chase': {
           if (e.staggerT > 0) {
             e.staggerT -= dt;
@@ -340,84 +459,64 @@ export class EnemyManager {
             break;
           }
           e.cdT -= dt;
-          if (e.dodgeTimer > 0) e.dodgeTimer -= dt;
-          if (e.hitAndRunTimer > 0) e.hitAndRunTimer -= dt;
+
+          // Если игрок ушёл за угол из зоны видимости, переходим в расследование
+          if (!e.hasLOS && dist > 5.0) {
+            e.state = 'investigate';
+            e.investigateT = rand(6, 9);
+            break;
+          }
 
           let moveX = nx, moveZ = nz;
           let moveSpeed = e.speed;
 
-          // ==================================================================
-          // ТАКТИЧЕСКИЙ ИИ ПО ТИПАМ ВРАГОВ
-          // ==================================================================
           if (e.typeName === 'minion') {
-            // СКОРОХОД: Тактическое уклонение (зигзаг) при наведении прицела игрока
-            if (isPlayerAimingAt && e.dodgeTimer <= 0 && dist > 3.0 && dist < 14.0) {
-              e.dodgeTimer = rand(0.35, 0.55);
-              e.dodgeDir = Math.random() < 0.5 ? 1 : -1;
-            }
-            if (e.dodgeTimer > 0) {
-              // Стрейф перпендикулярно лучу огня на повышенной скорости
-              const perpX = -nz * e.dodgeDir;
-              const perpZ = nx * e.dodgeDir;
-              moveX = nx * 0.45 + perpX * 0.85;
-              moveZ = nz * 0.45 + perpZ * 0.85;
-              moveSpeed = e.speed * 1.35;
-            } else {
-              // Фланговый заход по дуге
-              const cA = Math.cos(e.flankAngle * 0.5), sA = Math.sin(e.flankAngle * 0.5);
-              moveX = nx * cA - nz * sA;
-              moveZ = nx * sA + nz * cA;
-            }
+            // Скороход идёт по фланговой дуге к игроку
+            const cA = Math.cos(e.flankAngle * 0.4), sA = Math.sin(e.flankAngle * 0.4);
+            moveX = nx * cA - nz * sA;
+            moveZ = nx * sA + nz * cA;
           } else if (e.typeName === 'rogue') {
-            // РЕЗАК: Скрытный заход с флангов и тыла (Flanking Stalker)
-            if (e.hitAndRunTimer > 0) {
-              // Отскок назад и вбок после удара
-              moveX = -nx * 0.6 + (-nz * e.strafeDir * 0.8);
-              moveZ = -nz * 0.6 + (nx * e.strafeDir * 0.8);
-            } else if (dist > e.T.range * 1.2) {
-              // Широкий фланговый охват
-              const cA = Math.cos(e.flankAngle), sA = Math.sin(e.flankAngle);
-              moveX = nx * cA - nz * sA;
-              moveZ = nx * sA + nz * cA;
-            }
+            // Резак заходит сбоку
+            const cA = Math.cos(e.flankAngle * 0.8), sA = Math.sin(e.flankAngle * 0.8);
+            moveX = nx * cA - nz * sA;
+            moveZ = nx * sA + nz * cA;
           } else if (e.typeName === 'warrior') {
-            // КЛЕЩ: Танк-авангард, прёт прямо по центру, продавливая игрока
+            // Клещ идёт прямо напролом
             moveX = nx;
             moveZ = nz;
           } else if (e.T.ranged) {
-            // ПЛОД: Дистанционный кайт и стрейф за укрытия
+            // Плод держит дистанцию
             if (dist < e.T.keepMin) {
-              moveX = -nx; moveZ = -nz; // отступает при сближении игрока
+              moveX = -nx; moveZ = -nz;
             } else if (dist < e.T.keepMax) {
-              moveX = -nz * e.strafeDir * 0.75 + nx * 0.15;
-              moveZ = nx * e.strafeDir * 0.75 + nz * 0.15;
+              const cA = Math.cos(1.2 * e.strafeDir), sA = Math.sin(1.2 * e.strafeDir);
+              moveX = nx * cA - nz * sA;
+              moveZ = nx * sA + nz * cA;
             }
-            if (Math.random() < dt * 0.4) e.strafeDir *= -1;
+            if (Math.random() < dt * 0.3) e.strafeDir *= -1;
           }
 
-          // Нормализуем направление движения
           const moveLen = Math.hypot(moveX, moveZ);
           if (moveLen > 0.001) { moveX /= moveLen; moveZ /= moveLen; }
 
-          this._moveWithTacticalSteering(e, moveX, moveZ, moveSpeed, dt, arena);
+          // Движение с поворотом лицом в направлении движения (НИКАКИХ СТРЕЙФОВ БОКОМ!)
+          this._moveAndOrient(e, moveX, moveZ, moveSpeed, dt, arena);
 
-          const targetRot = Math.atan2(dx, dz);
-          let d = targetRot - e.group.rotation.y;
-          while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
-          e.group.rotation.y += d * Math.min(1, dt * 8);
-
-          const wantAttack = e.T.ranged ? (dist < e.T.keepMax + 3) : (dist < e.T.range);
-          if (wantAttack && e.cdT <= 0) {
+          const wantAttack = e.T.ranged ? (dist < e.T.keepMax + 2.5) : (dist < e.T.range);
+          if (wantAttack && e.cdT <= 0 && e.hasLOS) {
             e.state = 'attack'; e.t = 0; e.animT = 0; e.animDur = e.atkDur; e.appliedHit = false;
             if (!e.T.ranged) sfx.swing();
           }
 
           e.growlT -= dt;
-          if (e.growlT <= 0) { e.growlT = rand(4, 9); sfx.growl(e.typeName === 'warrior' ? 60 : e.typeName === 'mage' ? 120 : 90); }
+          if (e.growlT <= 0) {
+            e.growlT = rand(5, 11);
+            sfx.growl(e.typeName === 'warrior' ? 60 : e.typeName === 'mage' ? 120 : 90);
+          }
 
-          if (e.typeName !== 'mage' && Math.random() < dt * 1.1) {
+          if (e.typeName !== 'mage' && Math.random() < dt * 0.7) {
             const hd = e.typeName === 'warrior' ? e.T.height * 0.68 : e.T.height * 0.78;
-            fx.voxel(e.pos.x, e.pos.y + hd, e.pos.z, 0, -1.4, 0, this._dripC, 0.026, 1.7, { bounce: 0 });
+            fx.voxel(e.pos.x, e.pos.y + hd, e.pos.z, 0, -1.4, 0, this._dripC, 0.024, 1.5, { bounce: 0, isFluid: true });
           }
           break;
         }
@@ -427,18 +526,18 @@ export class EnemyManager {
           const neckY = e.pos.y + e.T.height * 0.78;
           fx.voxel(
             e.pos.x + rand(-0.05, 0.05), neckY, e.pos.z + rand(-0.05, 0.05),
-            rand(-0.8, 0.8), rand(2.5, 4.5), rand(-0.8, 0.8),
-            pick([new THREE.Color(0xe81410), new THREE.Color(0xa00f0d), new THREE.Color(0x6a0808)]),
-            rand(0.045, 0.08), rand(1.0, 1.8), { bounce: 0.3 }
+            rand(-0.6, 0.6), rand(2.2, 4.0), rand(-0.6, 0.6),
+            pick([new THREE.Color(0x7a0c0a), new THREE.Color(0x5e0807), new THREE.Color(0x420505)]),
+            rand(0.045, 0.075), rand(1.0, 1.8), { bounce: 0.25, isFluid: true }
           );
 
-          const wander = Math.sin(t * 8) * 0.4;
+          const wander = Math.sin(t * 7) * 0.35;
           const mx = e.forwardX + wander * e.forwardZ;
           const mz = e.forwardZ - wander * e.forwardX;
-          this._moveWithTacticalSteering(e, mx, mz, e.speed * 0.85, dt, arena);
+          this._moveAndOrient(e, mx, mz, e.speed * 0.8, dt, arena);
 
-          if (Math.random() < dt * 4.5) {
-            fx.bloodFloor(e.pos.x + rand(-0.25, 0.25), e.pos.z + rand(-0.25, 0.25), rand(0.6, 1.1));
+          if (Math.random() < dt * 3.5) {
+            fx.bloodFloor(e.pos.x + rand(-0.25, 0.25), e.pos.z + rand(-0.25, 0.25), rand(0.5, 0.9));
           }
 
           if (e.rampageT <= 0) {
@@ -449,23 +548,18 @@ export class EnemyManager {
 
         case 'crawl_chase': {
           e.cdT -= dt;
-          const crawlSpeed = e.speed * 0.45;
+          const crawlSpeed = e.speed * 0.42;
           const pullIntensity = Math.max(0, Math.sin(e.phase));
-          const crawlSurge = pullIntensity * 2.1;
+          const crawlSurge = pullIntensity * 1.8;
 
           if (crawlSurge > 0.05) {
-            this._moveWithTacticalSteering(e, nx, nz, crawlSpeed * crawlSurge, dt, arena);
+            this._moveAndOrient(e, nx, nz, crawlSpeed * crawlSurge, dt, arena);
           }
-
-          const targetRot = Math.atan2(dx, dz);
-          let d = targetRot - e.group.rotation.y;
-          while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
-          e.group.rotation.y += d * Math.min(1, dt * 6);
 
           e.crawlBloodT -= dt;
           if (e.crawlBloodT <= 0) {
-            e.crawlBloodT = 0.35;
-            fx.bloodFloor(e.pos.x + rand(-0.2, 0.2), e.pos.z + rand(-0.2, 0.2), rand(0.65, 1.05));
+            e.crawlBloodT = 0.4;
+            fx.bloodFloor(e.pos.x + rand(-0.15, 0.15), e.pos.z + rand(-0.15, 0.15), rand(0.55, 0.85));
           }
 
           if (dist < 1.45 && e.cdT <= 0) {
@@ -475,29 +569,41 @@ export class EnemyManager {
           break;
         }
 
+        // --------------------------------------------------------------------
+        // АТАКА (При атаке монстр поворачивается лицом к жертве)
+        // --------------------------------------------------------------------
         case 'attack': {
           e.t += dt; e.animT += dt;
-          if (!e.T.ranged && dist > e.T.range * 0.6) {
-            this._moveWithTacticalSteering(e, nx, nz, 1.0, dt, arena);
-          }
+
+          // Поворот точно к игроку во время удара
+          const targetRot = Math.atan2(dx, dz);
+          let d = targetRot - e.group.rotation.y;
+          while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+          e.group.rotation.y += d * Math.min(1, dt * 10);
+
           if (!e.appliedHit && e.t >= e.atkDur * (e.T.ranged ? 0.55 : 0.45)) {
             e.appliedHit = true;
             if (e.T.ranged) {
               this._fireProjectile(e, player);
-            } else if (dist < e.T.range + 0.6) {
+            } else if (dist < e.T.range + 0.5) {
               player.damage(e.T.dmg, null, sfx, this.hooks.hud);
-              if (e.typeName === 'rogue') e.hitAndRunTimer = 0.75; // Резак отпрыгивает после атаки
             }
           }
           if (e.t >= e.atkDur + 0.12) {
             e.cdT = rand(e.T.cd[0], e.T.cd[1]);
-            e.state = 'chase';
+            e.state = e.hasLOS ? 'chase' : 'patrol';
           }
           break;
         }
 
         case 'crawl_attack': {
           e.t += dt; e.animT += dt;
+
+          const targetRot = Math.atan2(dx, dz);
+          let d = targetRot - e.group.rotation.y;
+          while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+          e.group.rotation.y += d * Math.min(1, dt * 8);
+
           if (!e.appliedHit && e.t >= 0.35) {
             e.appliedHit = true;
             if (dist < 1.7) player.damage(Math.round(e.T.dmg * 0.75), null, sfx, this.hooks.hud);
@@ -513,8 +619,8 @@ export class EnemyManager {
           e.ragdoll.update(dt, arena);
           e.stunT -= dt;
 
-          if (Math.random() < dt * 0.4) {
-            fx.voxel(e.pos.x, e.pos.y + 0.2, e.pos.z, 0, -1.0, 0, this._dripC, 0.03, 1.5, { bounce: 0 });
+          if (Math.random() < dt * 0.3) {
+            fx.voxel(e.pos.x, e.pos.y + 0.2, e.pos.z, 0, -1.0, 0, this._dripC, 0.026, 1.4, { bounce: 0, isFluid: true });
           }
 
           if (e.stunT <= 0) {
@@ -539,7 +645,7 @@ export class EnemyManager {
         case 'getup': {
           e.getupT += dt;
           if (e.getupT >= e.getupDur) {
-            e.state = 'chase';
+            e.state = e.hasLOS ? 'chase' : 'patrol';
             e.cdT = 0.4;
           }
           break;
@@ -559,7 +665,7 @@ export class EnemyManager {
           e.corpseT += dt;
 
           if (e.corpseT >= 0.5 && e.corpseT - dt < 0.5) {
-            fx.bloodFloor(e.pos.x, e.pos.z, e.T === TYPES.warrior ? 1.8 : 1.2);
+            fx.bloodFloor(e.pos.x, e.pos.z, e.T === TYPES.warrior ? 1.6 : 1.1);
           }
 
           if (e.corpseT >= e.corpseDur) {
@@ -611,9 +717,9 @@ export class EnemyManager {
   }
 
   // ==========================================================================
-  // Тактическое руление: обход стен, прохождение коридоров и дверей без застревания
+  // Движение с поворотом корпуса точно по вектору пути (НИКАКИХ СТРЕЙФОВ БОКОМ!)
   // ==========================================================================
-  _moveWithTacticalSteering(e, wishX, wishZ, speed, dt, arena) {
+  _moveAndOrient(e, wishX, wishZ, speed, dt, arena) {
     const probe = 0.85 + e.T.radius;
 
     const isBlocked = (x, z) => {
@@ -629,11 +735,10 @@ export class EnemyManager {
 
     let dirx = wishX, dirz = wishZ;
 
-    // Проверка препятствия впереди лучами-усиками (Whisker Feeler Navigation)
+    // Усики-щупы для обхода дверных проемов и углов
     if ((wishX || wishZ) && isBlocked(e.pos.x + dirx * probe, e.pos.z + dirz * probe)) {
       const baseAng = Math.atan2(wishZ, wishX);
       let found = false;
-      // Сканируем углы в обе стороны
       for (const s of [0.55, -0.55, 1.1, -1.1, 1.6, -1.6, 2.2, -2.2]) {
         const a = baseAng + s * (e.strafeDir || 1);
         const tx = Math.cos(a), tz = Math.sin(a);
@@ -649,10 +754,22 @@ export class EnemyManager {
       }
     }
 
+    // Перемещение
     e.pos.x += dirx * speed * dt;
     e.pos.z += dirz * speed * dt;
 
-    // Расталкивание между врагами (Anti-Clustering Boid Separation)
+    // ПОВОРОТ КОРПУСА: Монстр ВСЕГДА разворачивается лицом по ходу своего движения!
+    if (Math.hypot(dirx, dirz) > 0.01) {
+      const targetFacing = Math.atan2(dirx, dirz);
+      let diff = targetFacing - e.group.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      e.group.rotation.y += diff * Math.min(1, dt * 9.0);
+      while (e.group.rotation.y > Math.PI) e.group.rotation.y -= Math.PI * 2;
+      while (e.group.rotation.y < -Math.PI) e.group.rotation.y += Math.PI * 2;
+    }
+
+    // Расталкивание
     this._separate(e);
 
     arena.clampCircle(e.pos, e.T.radius, e.pos.y, e.T.height);
@@ -661,12 +778,12 @@ export class EnemyManager {
     e.pos.y = g;
   }
 
-  // Мощное расталкивание монстров (предотвращает сбивание в кучу)
+  // Расталкивание монстров (Anti-Clustering)
   _separate(e) {
     for (const o of this.list) {
       if (o === e || o.state === 'dying' || o.state === 'dead' || o.state === 'corpse_ragdoll') continue;
       const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z;
-      const minDistance = e.T.radius + o.T.radius + 0.28; // увеличенная дистанция личного пространства
+      const minDistance = e.T.radius + o.T.radius + 0.28;
       const d2 = dx * dx + dz * dz;
 
       if (d2 < minDistance * minDistance && d2 > 1e-6) {
@@ -688,9 +805,8 @@ export class EnemyManager {
     mesh.position.copy(start);
     this.scene.add(mesh);
 
-    // Упреждение цели (Predictive aim leading)
     const t = Math.min(1.2, Math.hypot(player.pos.x - start.x, player.pos.z - start.z) / 12);
-    const target = _v2.set(player.pos.x + player.vel.x * t * 0.65, player.pos.y + 1.1, player.pos.z + player.vel.z * t * 0.65);
+    const target = _v2.set(player.pos.x + player.vel.x * t * 0.6, player.pos.y + 1.1, player.pos.z + player.vel.z * t * 0.6);
     const dir = target.sub(start).normalize();
     this.projectiles.push({
       mesh, pos: start.clone(), vel: dir.multiplyScalar(12),
@@ -823,6 +939,10 @@ export class EnemyManager {
         this.hooks.hud.styleEvent('ПИНОК! +' + (e.hp <= 0 ? '120' : '45'));
       }
 
+      // Немедленно агрим врага на пинок
+      e.lastKnownPlayerPos = origin.clone();
+      if (e.state === 'patrol' || e.state === 'investigate') e.state = 'chase';
+
       if (e.hp <= 0) {
         if (this.hooks.onKill) this.hooks.onKill(e, false, false);
         this._triggerDeath(e, dir, null, false);
@@ -896,6 +1016,13 @@ export function attachEnemyDamage(e, mgr, hooks) {
     const isHead = hitZone === 'head' || hitInfo.head;
     const shotDir = dir || UP;
 
+    // Урон привлекает внимание монстра к стрелявшему
+    e.lastKnownPlayerPos = (point || e.pos).clone().addScaledVector(shotDir, -4);
+    if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
+      e.state = 'chase';
+    }
+    mgr.alertSound(point || e.pos, 20);
+
     if (e.state === 'corpse_ragdoll') {
       const big = e.T === TYPES.warrior;
       mgr.fx.gib(point || e.pos, big);
@@ -915,7 +1042,7 @@ export function attachEnemyDamage(e, mgr, hooks) {
 
     mgr.fx.blood(point || e.pos, shotDir, isHead ? 28 : 15, isHead ? 1.45 : 1.15);
 
-    if (e.state === 'chase' || e.state === 'attack' || e.state === 'spawn') {
+    if (e.state === 'chase' || e.state === 'patrol' || e.state === 'investigate' || e.state === 'attack' || e.state === 'spawn') {
       const kbForce = (amount * 0.22) * (e.typeName === 'warrior' ? 0.65 : 1.15);
       e.knockbackVel.x += shotDir.x * kbForce;
       e.knockbackVel.z += shotDir.z * kbForce;
@@ -933,7 +1060,7 @@ export function attachEnemyDamage(e, mgr, hooks) {
     e.flinchRoll = hitZone === 'lArm' ? 0.35 : hitZone === 'rArm' ? -0.35 : 0;
     e.flinchYaw = hitZone === 'lArm' ? 0.25 : hitZone === 'rArm' ? -0.25 : 0;
 
-    if (e.state === 'chase') {
+    if (e.state === 'chase' || e.state === 'investigate' || e.state === 'patrol') {
       e.staggerT = Math.min(0.2, amount / 85);
     }
 

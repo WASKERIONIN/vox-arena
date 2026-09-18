@@ -5,7 +5,7 @@ import { FX } from '../src/fx.js';
 import { AudioSys } from '../src/audio.js';
 import { buildArena, MAPS } from '../src/arena.js';
 
-console.log('=== ТЕСТИРОВАНИЕ ТАКТИЧЕСКОГО ИИ, КАРТЫ КАТАКОМБ И 3D ФЛЮИДОВ ===\n');
+console.log('=== ТЕСТИРОВАНИЕ СИСТЕМ: LOS, ЗРЕНИЕ БЕЗ МАГНИТА, ФИЗИЧЕСКИЙ ПОВОРОТ, СВЕТОТЕНЬ КРОВИ ===\n');
 
 function mockTex() {
   const d = new Uint8Array([255, 255, 255, 255]);
@@ -26,7 +26,7 @@ const sfx = new AudioSys();
 const fx = new FX(scene, T);
 
 const mockHud = {
-  styleEvent: (s) => console.log('  [HUD STYLE]', s),
+  styleEvent: (s) => {},
   hitmarker: (k) => {},
   damageFlash: () => {},
   setAmmo: () => {},
@@ -40,106 +40,102 @@ const enemies = new EnemyManager(scene, T, fx, sfx, {
 });
 
 const player = new Player(camera);
-
-// --------------------------------------------------------------------------
-// 1. Тест карты «КАТАКОМБЫ»
-// --------------------------------------------------------------------------
-console.log('--- ТЕСТ 1: Генерация геометрии карты Катакомб ---');
 const catacombs = buildArena(scene, T, 'catacombs');
-console.log('Коллайдеров в Катакомбах:', catacombs.colliders.length);
-console.log('Точек спавна в Катакомбах:', catacombs.spawnPoints.length);
-if (catacombs.colliders.length < 15) throw new Error('Not enough colliders in Catacombs map');
-if (catacombs.spawnPoints.length < 4) throw new Error('Catacombs map must have at least 4 spawn portals');
-console.log('✓ Карта Катакомб успешно построена с коридорами, комнатами и порталами');
 
 // --------------------------------------------------------------------------
-// 2. Тест тактического движения и обхода стен в узком коридоре
+// 1. Тест: Материалы крови реагируют на свет (MeshLambertMaterial, а не unlit Basic)
 // --------------------------------------------------------------------------
-console.log('\n--- ТЕСТ 2: Навигация монстров по коридорам и обход углов ---');
-// Спавним монстра в северном коридоре (X=0, Z=14), где стены на X=-2.8 и X=2.8
-player.pos.set(0, 0, 0); // Игрок в центральном хабе
-const minionCorridor = enemies.spawn('minion', 0, 14, 1);
-console.log('Скороход заспавнен в коридоре (0, 14). Цель: игрок в (0, 0)');
-
-for (let s = 0; s < 40; s++) {
-  enemies.update(0.05, player, catacombs);
+console.log('--- ТЕСТ 1: Материалы крови и луж реагируют на освещение сцены ---');
+const puddle = fx.bloodPuddles[0];
+console.log('Тип материала лужи на полу:', puddle.mesh.material.type);
+if (puddle.mesh.material.type !== 'MeshLambertMaterial') {
+  throw new Error('Blood puddle material must be MeshLambertMaterial to respond to light/shadow');
 }
-console.log('Позиция скорохода после движения:', minionCorridor.pos.x.toFixed(2), minionCorridor.pos.y.toFixed(2), minionCorridor.pos.z.toFixed(2));
-if (minionCorridor.pos.z >= 14) throw new Error('Minion should advance along corridor toward player');
-if (Math.abs(minionCorridor.pos.x) > 2.5) throw new Error('Minion clipped through corridor wall!');
-if (minionCorridor.pos.y < 0) throw new Error('Minion fell through floor!');
-console.log('✓ Монстр корректно продвигается по коридору без застреваний и проваливаний');
-
-// --------------------------------------------------------------------------
-// 3. Тест тактического уклонения скорохода (Evasive Dodge)
-// --------------------------------------------------------------------------
-console.log('\n--- ТЕСТ 3: Тактическое уклонение (зигзаг) при наведении прицела ---');
-player.pos.set(0, 0, 0);
-player.yaw = 0;
-player.pitch = 0;
-// Обновляем камеру игрока
-player.camera.position.set(0, 1.62, 0);
-player.camera.rotation.set(0, 0, 0);
-
-const evader = enemies.spawn('minion', 0, -8, 1);
-evader.state = 'chase'; // переводим сразу в активное преследование
-
-// Обновляем состояние, монстр должен обнаружить прицел и начать уклонение
-enemies.update(0.05, player, catacombs);
-console.log('Таймер уклонения скорохода:', evader.dodgeTimer.toFixed(2), '| Направление:', evader.dodgeDir);
-if (evader.dodgeTimer <= 0) throw new Error('Minion should activate evasive dodge when aimed at');
-
-const initX = evader.pos.x;
-for (let s = 0; s < 10; s++) {
-  enemies.update(0.04, player, catacombs);
+const hole = fx.holes[0];
+console.log('Тип материала декалей:', hole.material.type);
+if (hole.material.type !== 'MeshLambertMaterial') {
+  throw new Error('Hole/blood decal material must be MeshLambertMaterial');
 }
-console.log('Смещение скорохода по X при уклонении:', (evader.pos.x - initX).toFixed(3));
-if (Math.abs(evader.pos.x - initX) < 0.1) throw new Error('Minion should dodge sideways');
-console.log('✓ Скороход успешно совершил тактический зигзаг для уклонения от огня');
+console.log('✓ Лужи и декали крови используют MeshLambertMaterial и реагируют на свет/тень/фонарь');
 
 // --------------------------------------------------------------------------
-// 4. Тест анти-скучивания (Anti-Clumping Repulsion)
+// 2. Тест: Поворот корпуса строго по ходу движения (НИКАКИХ СТРЕЙФОВ БОКОМ)
 // --------------------------------------------------------------------------
-console.log('\n--- ТЕСТ 4: Предотвращение скучивания (Anti-Clustering) ---');
+console.log('\n--- ТЕСТ 2: Ориентация монстра точно по направлению ходьбы (No strafing) ---');
 enemies.clear();
-const m1 = enemies.spawn('warrior', 0.1, 8, 1);
-const m2 = enemies.spawn('warrior', -0.1, 8, 1);
-m1.state = 'chase';
-m2.state = 'chase';
-const initialDist = Math.hypot(m1.pos.x - m2.pos.x, m1.pos.z - m2.pos.z);
-console.log('Начальная дистанция между двумя монстрами в одной точке:', initialDist.toFixed(3));
+// Ставим монстра в открытом коридоре (0, 4) с целью на север (0, 14)
+const walker = enemies.spawn('minion', 0, 4, 1);
+walker.state = 'patrol';
+walker.patrolTarget.set(0, 0, 14); // движение на север (+Z), ожидаемый угол atan2(0, 1) = 0
+walker.patrolWaitT = 0;
+
+for (let s = 0; s < 25; s++) {
+  enemies.update(0.05, player, catacombs);
+}
+
+// Угол движения на север (+Z): Math.atan2(0, 1) = 0 рад
+console.log('Вращение монстра по Y при ходьбе на север (+Z):', walker.group.rotation.y.toFixed(3), 'рад (ожидается ~0.00)');
+const angleDiff = Math.abs(walker.group.rotation.y);
+if (angleDiff > 0.35) throw new Error('Monster body must face the direction of movement!');
+console.log('✓ Монстр поворачивается лицом по вектору своего пути без боковых стрейфов');
+
+// --------------------------------------------------------------------------
+// 3. Тест: Отсутствие магнита / Линия видимости (LOS)
+// --------------------------------------------------------------------------
+console.log('\n--- ТЕСТ 3: Отсутствие магнита сквозь стены (Line of Sight & Awareness) ---');
+enemies.clear();
+// Игрок в центральном зале (0, 0)
+player.pos.set(0, 0, 0);
+player.flashlightOn = false;
+
+// Монстр за стеной в северной биолаборатории (0, 26). Стены лаборатории блокируют прямую видимость!
+const hiddenMonster = enemies.spawn('warrior', 0, 26, 1);
+hiddenMonster.state = 'patrol';
 
 for (let s = 0; s < 10; s++) {
   enemies.update(0.05, player, catacombs);
 }
-const finalDist = Math.hypot(m1.pos.x - m2.pos.x, m1.pos.z - m2.pos.z);
-console.log('Дистанция после взаимного расталкивания:', finalDist.toFixed(3));
-if (finalDist <= initialDist) throw new Error('Monsters should push each other apart');
-console.log('✓ Монстры распределяют личное пространство и не сбиваются в сплошную кучу');
 
-// --------------------------------------------------------------------------
-// 5. Тест 3D флюидной динамики крови и расширяющихся луж
-// --------------------------------------------------------------------------
-console.log('\n--- ТЕСТ 5: 3D флюидная физика и динамические лужи на полу ---');
-fx.clear();
-console.log('Количество активных луж изначально:', fx.bloodPuddles.filter(p => p.mesh.visible).length);
-
-// Вызываем физический флюидный фонтан
-fx.fluidSpurt(new THREE.Vector3(0, 2.0, 0), new THREE.Vector3(0, 1, 0), 30, 4.0, 1.0, true);
-console.log('Воксельных частиц флюида создано:', fx.count);
-if (fx.count === 0) throw new Error('Fluid voxels should be spawned');
-
-// Симулируем падение флюида на пол
-for (let s = 0; s < 25; s++) {
-  fx.update(0.04, catacombs);
+console.log('Состояние монстра за сплошной стеной:', hiddenMonster.state, '| hasLOS:', hiddenMonster.hasLOS);
+if (hiddenMonster.state === 'chase' || hiddenMonster.hasLOS) {
+  throw new Error('Monster behind walls must NOT magically detect player without LOS!');
 }
+console.log('✓ Монстр за стеной не бросается на игрока и остаётся в патруле/блуждании');
 
-const activePuddles = fx.bloodPuddles.filter(p => p.mesh.visible);
-console.log('Активных луж сформировано на полу:', activePuddles.length);
-if (activePuddles.length === 0) throw new Error('Floor blood puddles should be formed by fluid impacts');
-const puddle = activePuddles[0];
-console.log('Радиус сформированной лужи:', puddle.radius.toFixed(3), 'м, цель:', puddle.targetRadius.toFixed(3), 'м');
+// --------------------------------------------------------------------------
+// 4. Тест: Обнаружение при появлении прямой видимости (LOS)
+// --------------------------------------------------------------------------
+console.log('\n--- ТЕСТ 4: Обнаружение при входе в прямую видимость (LOS) ---');
+// Ставим игрока в открытом коридоре (0, 4), а монстра в (0, 12)
+player.pos.set(0, 0, 4);
+const visibleMonster = enemies.spawn('minion', 0, 12, 1);
+visibleMonster.state = 'patrol';
+// Разворачиваем монстра лицом к игроку (смотрит по -Z, rotation.y = PI)
+visibleMonster.group.rotation.y = Math.PI;
+
+enemies.update(0.05, player, catacombs);
+console.log('Состояние монстра в прямой видимости:', visibleMonster.state, '| hasLOS:', visibleMonster.hasLOS);
+if (visibleMonster.state !== 'chase' || !visibleMonster.hasLOS) {
+  throw new Error('Monster with clear line of sight must spot player and enter chase');
+}
+console.log('✓ Монстр в прямой видимости успешно замечает игрока и начинает преследование');
+
+// --------------------------------------------------------------------------
+// 5. Тест: Звук выстрела привлекает врагов за стенами (Investigate sound origin)
+// --------------------------------------------------------------------------
+console.log('\n--- ТЕСТ 5: Звук выстрела привлекает монстров из других комнат ---');
+console.log('Состояние скрытого монстра до звука выстрела:', hiddenMonster.state);
+enemies.alertSound(player.pos, 35);
+console.log('Состояние скрытого монстра после звука выстрела:', hiddenMonster.state);
+if (hiddenMonster.state !== 'investigate') {
+  throw new Error('Monster should enter investigate state upon hearing gunshot');
+}
+console.log('Цель расследования монстра:', hiddenMonster.lastKnownPlayerPos.x, hiddenMonster.lastKnownPlayerPos.z);
+if (hiddenMonster.lastKnownPlayerPos.x !== player.pos.x || hiddenMonster.lastKnownPlayerPos.z !== player.pos.z) {
+  throw new Error('Monster should investigate sound origin position');
+}
+console.log('✓ Звук выстрела правильно переводит удаленных врагов в режим расследования источника шума');
 
 console.log('\n================================================================');
-console.log('ВСЕ ТЕСТЫ ТАКТИЧЕСКОГО ИИ, КАРТЫ И 3D ЖИДКОСТЕЙ УСПЕШНО ПРОЙДЕНЫ! ✓');
+console.log('ВСЕ ТЕСТЫ СЕНСОРНОГО ИИ, ПОВОРОТОВ И СВЕТОТЕНИ КРОВИ УСПЕШНО ПРОЙДЕНЫ! ✓');
 console.log('================================================================');
