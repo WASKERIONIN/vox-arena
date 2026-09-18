@@ -115,15 +115,19 @@ export class FX {
   }
   _c(hex) { return new THREE.Color(hex); }
 
-  blood(p, dir, n = 16, power = 1) {
+  blood(p, dir, n = 36, power = 1.6) {
     n = Math.round(n * this.budget);
-    const cols = [this._c(0x9e1210), this._c(0x6e0a0a), this._c(0xd42a2a), this._c(0x3f0505)];
+    const cols = [this._c(0xc81410), this._c(0x9e1210), this._c(0xe82828), this._c(0x5a0808), this._c(0x7d0a0a)];
     for (let i = 0; i < n; i++) {
       this.voxel(
-        p.x + rand(-0.1, 0.1), p.y + rand(-0.1, 0.1), p.z + rand(-0.1, 0.1),
-        dir.x * rand(1, 3.5) * power + rand(-2, 2), rand(0.5, 3.4) * power, dir.z * rand(1, 3.5) * power + rand(-2, 2),
-        pick(cols), rand(0.035, 0.085), rand(1.2, 2.6)
+        p.x + rand(-0.08, 0.08), p.y + rand(-0.08, 0.08), p.z + rand(-0.08, 0.08),
+        dir.x * rand(2.5, 6.5) * power + rand(-2.5, 2.5), rand(0.8, 4.2) * power, dir.z * rand(2.5, 6.5) * power + rand(-2.5, 2.5),
+        pick(cols), rand(0.045, 0.095), rand(1.2, 2.8)
       );
+    }
+    // при каждом ранении оставляем след крови на полу!
+    if (Math.random() < 0.6) {
+      this.bloodFloor(p.x + rand(-0.3, 0.3), p.z + rand(-0.3, 0.3), rand(0.5, 0.95));
     }
   }
   gib(p, big = false) {
