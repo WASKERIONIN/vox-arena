@@ -3,9 +3,26 @@ import { rand } from './config.js';
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
-// Арена «SKIASH TELEPORT»: пол, стены, неон, ворота спавна, платформа, укрытия, аптечки
-export function buildArena(scene, T) {
+export const MAPS = {
+  arena: {
+    id: 'arena',
+    name: 'АРЕНА: ТЕЛЕПОРТ',
+    desc: 'Классический открытый колизей с платформой, колоннами и 4 порталами',
+    playerSpawn: { x: 0, y: 0, z: 16, yaw: 0 },
+  },
+  catacombs: {
+    id: 'catacombs',
+    name: 'КОМПЛЕКС: КАТАКОМБЫ',
+    desc: 'Ветвящиеся узкие коридоры, перекрёстки, лаборатории и фланговые тоннели',
+    playerSpawn: { x: 0, y: 0, z: 0, yaw: 0 },
+  },
+};
+
+// Построение карт арены или катакомб
+export function buildArena(scene, T, mapId = 'arena') {
   const colliders = []; // {min,max}
+  const lights = [];
+  const meshes = [];
   const lam = (map, color = 0xffffff, extra = {}) => new THREE.MeshLambertMaterial({ map, color, ...extra });
 
   const addBox = (cx, baseY, cz, sx, sy, sz, mat, { collide = true, texRepeat = null } = {}) => {
@@ -20,153 +37,252 @@ export function buildArena(scene, T) {
     const mesh = new THREE.Mesh(g, mat);
     mesh.position.set(cx, baseY + sy / 2, cz);
     scene.add(mesh);
+    meshes.push(mesh);
     if (collide) colliders.push({ min: V3(cx - sx / 2, baseY, cz - sz / 2), max: V3(cx + sx / 2, baseY + sy, cz + sz / 2) });
     return mesh;
   };
 
-  // ---- свет (хоррор-атмосфера: контрастные тени и глубокие тона) ----
-  scene.add(new THREE.HemisphereLight(0x5a4850, 0x120c16, 0.65));
-  scene.add(new THREE.AmbientLight(0x32242a, 0.4));
-  const dir = new THREE.DirectionalLight(0xb88870, 0.85);
-  dir.position.set(24, 38, 14);
-  scene.add(dir);
-
-  // ---- небо ----
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(300, 20, 12),
-    new THREE.MeshBasicMaterial({ map: T.sky, side: THREE.BackSide, fog: false, depthWrite: false })
-  );
-  sky.renderOrder = -1;
-  scene.add(sky);
-
-  // ---- пол ----
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), lam(T.floor));
-  floor.rotation.x = -Math.PI / 2;
-  scene.add(floor);
-
-  // ---- стены ----
-  const wallMat = lam(T.wall, 0xffffff, { color: 0xb8b0ac });
-  addBox(0, 0, -32, 64, 6, 1.2, wallMat, { texRepeat: [8, 1] });
-  addBox(0, 0, 32, 64, 6, 1.2, wallMat, { texRepeat: [8, 1] });
-  addBox(-32, 0, 0, 1.2, 6, 64, wallMat, { texRepeat: [8, 1] });
-  addBox(32, 0, 0, 1.2, 6, 64, wallMat, { texRepeat: [8, 1] });
-
-  // ---- неон и hazard-полосы по стенам ----
   const neon = new THREE.MeshBasicMaterial({ color: 0xff2418 });
-  const neon2 = new THREE.MeshBasicMaterial({ color: 0xff5530 });
-  const hazMat = lam(T.hazard);
-  const strip = (x, y, z, sx, sy, sz, mat) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
-    m.position.set(x, y, z); scene.add(m); return m;
-  };
-  strip(0, 1.0, -31.35, 63, 0.5, 0.06, hazMat); strip(0, 1.0, 31.35, 63, 0.5, 0.06, hazMat);
-  strip(-31.35, 1.0, 0, 0.06, 0.5, 63, hazMat); strip(31.35, 1.0, 0, 0.06, 0.5, 63, hazMat);
-  strip(0, 3.4, -31.32, 63, 0.1, 0.05, neon); strip(0, 3.4, 31.32, 63, 0.1, 0.05, neon);
-  strip(-31.32, 3.4, 0, 0.05, 0.1, 63, neon); strip(31.32, 3.4, 0, 0.05, 0.1, 63, neon);
-  strip(0, 5.6, -31.34, 63, 0.06, 0.04, neon2); strip(0, 5.6, 31.34, 63, 0.06, 0.04, neon2);
-  strip(-31.34, 5.6, 0, 0.04, 0.06, 63, neon2); strip(31.34, 5.6, 0, 0.04, 0.06, 63, neon2);
-
-  // ---- ворота спавна (4) ----
-  const gateMat = lam(T.platform, 0x8a8a8a);
+  const neonOrange = new THREE.MeshBasicMaterial({ color: 0xff7722 });
+  const neonBlue = new THREE.MeshBasicMaterial({ color: 0x3388ff });
   const portalMat = new THREE.MeshBasicMaterial({ color: 0x55090a, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
   const barsMat = new THREE.MeshBasicMaterial({ color: 0x14090c });
   const spawnPoints = [];
-  const gates = [
-    { x: 0, z: -31.2, ry: 0 }, { x: 0, z: 31.2, ry: Math.PI },
-    { x: -31.2, z: 0, ry: Math.PI / 2 }, { x: 31.2, z: 0, ry: -Math.PI / 2 },
-  ];
-  for (const gt of gates) {
-    const g = new THREE.Group(); g.position.set(gt.x, 0, gt.z); g.rotation.y = gt.ry;
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 4.6, 1), gateMat); p1.position.set(-2.2, 2.3, 0.4);
-    const p2 = p1.clone(); p2.position.x = 2.2;
-    const top = new THREE.Mesh(new THREE.BoxGeometry(5.1, 0.7, 1), gateMat); top.position.set(0, 4.95, 0.4);
-    const portal = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 4.2), portalMat);
-    portal.position.set(0, 2.2, 0.55);
-    // тёмная решётка поверх портала — читается как врата, а не как плашка
-    const bars = new THREE.Group();
-    for (let i = 0; i < 4; i++) {
-      const h = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.12, 0.08), barsMat);
-      h.position.set(0, 0.7 + i * 1.05, 0.6); bars.add(h);
-      const v = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.4, 0.08), barsMat);
-      v.position.set(-1.3 + i * 0.87, 2.2, 0.6); bars.add(v);
-    }
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.3, 0.1), barsMat);
-    frame.position.set(0, 4.5, 0.58);
-    // светящаяся красная окантовка проёма
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff2418 });
-    const edgeT = new THREE.Mesh(new THREE.BoxGeometry(4.1, 0.14, 0.12), glowMat); edgeT.position.set(0, 4.62, 0.6);
-    const edgeL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 4.5, 0.12), glowMat); edgeL.position.set(-1.95, 2.35, 0.6);
-    const edgeR = edgeL.clone(); edgeR.position.x = 1.95;
-    // мягкое свечение внутри проёма
-    const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.glow, color: 0xff2018, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
-    innerGlow.scale.set(5.5, 6.5, 1); innerGlow.position.set(0, 2.3, 0.4);
-    g.add(p1, p2, top, portal, bars, frame, edgeT, edgeL, edgeR, innerGlow);
-    // красный свет у ворот
-    const pl = new THREE.PointLight(0xff2418, 26, 14, 2); pl.position.set(0, 3, -1.5); g.add(pl);
-    scene.add(g);
-    spawnPoints.push(V3(gt.x * 0.93, 0, gt.z * 0.93));
-  }
-
-  // ---- центральная платформа + ступени ----
-  const platMat = lam(T.platform, 0x9aa0a8);
-  addBox(0, 0, 0, 12, 1.2, 12, platMat, { texRepeat: [3, 3] });
-  addBox(0, 0, 7.2, 4.4, 0.6, 2.6, platMat, { texRepeat: [1, 1] });
-  addBox(0, 0, -7.2, 4.4, 0.6, 2.6, platMat, { texRepeat: [1, 1] });
-  addBox(0, 1.2, 0, 3, 0.14, 3, lam(T.crate), { collide: false }); // декор-панель
-  // красная кайма платформы
-  const rim = new THREE.MeshBasicMaterial({ color: 0xff2418 });
-  strip(0, 1.28, 6.02, 12.06, 0.06, 0.05, rim); strip(0, 1.28, -6.02, 12.06, 0.06, 0.05, rim);
-  strip(6.02, 1.28, 0, 0.05, 0.06, 12.06, rim); strip(-6.02, 1.28, 0, 0.05, 0.06, 12.06, rim);
-
-  // ---- колонны с фонарями ----
-  const colMat = lam(T.wall, 0x777777);
-  for (let i = 0; i < 8; i++) {
-    const a = i * Math.PI / 4 + Math.PI / 8;
-    const x = Math.cos(a) * 19, z = Math.sin(a) * 19;
-    addBox(x, 0, z, 1.7, 6, 1.7, colMat, { texRepeat: [1, 2] });
-    strip(x, 4.4, z, 1.76, 0.14, 1.76, neon);
-    if (i % 2 === 0) {
-      const pl = new THREE.PointLight(0xffa050, 42, 20, 2);
-      pl.position.set(x, 5.2, z); scene.add(pl);
-      strip(x, 5.6, z, 0.5, 0.3, 0.5, new THREE.MeshBasicMaterial({ color: 0xffc860 }));
-    }
-  }
-
-  // ---- ящики ----
-  const crateMat = lam(T.crate, 0xb0a890);
-  const crates = [
-    [8, 0, 14, 1.5], [9.6, 0, 14.4, 1.1], [8.7, 1.5, 14.2, 1.0],
-    [-13, 0, 9, 1.4], [-13, 1.4, 9, 0.9],
-    [15, 0, -9, 1.6], [-9, 0, -16, 1.3], [-10.4, 0, -15.6, 1.0],
-    [18, 0, 6, 1.2], [-17, 0, -4, 1.5], [6, 0, -20, 1.1], [-22, 0, 12, 1.3],
-  ];
-  for (const [x, y, z, s] of crates) addBox(x, y, z, s, s, s, crateMat);
-
-  // ---- дальние силуэты ----
-  const towerMat = new THREE.MeshLambertMaterial({ color: 0x0d0a0e });
-  const towers = [[-46, -40, 6, 30], [40, -52, 8, 24], [55, 20, 5, 34], [-58, 15, 7, 26], [10, -60, 9, 20], [-25, 55, 6, 28]];
-  for (const [x, z, w, h] of towers) {
-    const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), towerMat);
-    t.position.set(x, h / 2 - 0.5, z); scene.add(t);
-  }
-
-  // ---- аптечки ----
   const pickups = [];
-  const spots = [[12.5, 0, 12.5], [-12.5, 0, -12.5], [12.5, 0, -12.5], [-12.5, 0, 12.5]];
-  const crossMatA = new THREE.MeshBasicMaterial({ color: 0xff3344 });
-  const glowMat = new THREE.SpriteMaterial({ map: T.glow, color: 0xff3344, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
-  for (const [x, baseY, z] of spots) {
-    const g = new THREE.Group(); g.position.set(x, baseY, z);
-    const a = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.13, 0.13), crossMatA);
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.13), crossMatA);
-    const glow = new THREE.Sprite(glowMat); glow.scale.setScalar(1.4);
-    g.add(a, b, glow);
-    scene.add(g);
-    pickups.push({ g, x, y: baseY, z, active: true, timer: 0 });
+
+  // ==========================================================================
+  // 1. КАРТА: ОТКРЫТАЯ АРЕНА «SKIASH TELEPORT»
+  // ==========================================================================
+  if (mapId === 'arena') {
+    // Свет
+    const hemi = new THREE.HemisphereLight(0x5a4850, 0x120c16, 0.65); scene.add(hemi); lights.push(hemi);
+    const amb = new THREE.AmbientLight(0x32242a, 0.4); scene.add(amb); lights.push(amb);
+    const dir = new THREE.DirectionalLight(0xb88870, 0.85); dir.position.set(24, 38, 14); scene.add(dir); lights.push(dir);
+
+    // Небо и пол
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(300, 20, 12), new THREE.MeshBasicMaterial({ map: T.sky, side: THREE.BackSide, fog: false, depthWrite: false }));
+    sky.renderOrder = -1; scene.add(sky); meshes.push(sky);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), lam(T.floor)); floor.rotation.x = -Math.PI / 2; scene.add(floor); meshes.push(floor);
+
+    // Внешний периметр стен
+    const wallMat = lam(T.wall, 0xb8b0ac);
+    addBox(0, 0, -32, 64, 6, 1.2, wallMat, { texRepeat: [8, 1] });
+    addBox(0, 0, 32, 64, 6, 1.2, wallMat, { texRepeat: [8, 1] });
+    addBox(-32, 0, 0, 1.2, 6, 64, wallMat, { texRepeat: [8, 1] });
+    addBox(32, 0, 0, 1.2, 6, 64, wallMat, { texRepeat: [8, 1] });
+
+    // Ворота спавна (4 шт)
+    const gateMat = lam(T.platform, 0x8a8a8a);
+    const gates = [
+      { x: 0, z: -31.2, ry: 0 }, { x: 0, z: 31.2, ry: Math.PI },
+      { x: -31.2, z: 0, ry: Math.PI / 2 }, { x: 31.2, z: 0, ry: -Math.PI / 2 },
+    ];
+    for (const gt of gates) {
+      const g = new THREE.Group(); g.position.set(gt.x, 0, gt.z); g.rotation.y = gt.ry;
+      const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 4.6, 1), gateMat); p1.position.set(-2.2, 2.3, 0.4);
+      const p2 = p1.clone(); p2.position.x = 2.2;
+      const top = new THREE.Mesh(new THREE.BoxGeometry(5.1, 0.7, 1), gateMat); top.position.set(0, 4.95, 0.4);
+      const portal = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 4.2), portalMat); portal.position.set(0, 2.2, 0.55);
+      const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.glow, color: 0xff2018, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+      innerGlow.scale.set(5.5, 6.5, 1); innerGlow.position.set(0, 2.3, 0.4);
+      g.add(p1, p2, top, portal, innerGlow);
+      const pl = new THREE.PointLight(0xff2418, 26, 14, 2); pl.position.set(0, 3, -1.5); g.add(pl);
+      scene.add(g); meshes.push(g);
+      spawnPoints.push(V3(gt.x * 0.93, 0, gt.z * 0.93));
+    }
+
+    // Центральная платформа со ступенями
+    const platMat = lam(T.platform, 0x9aa0a8);
+    addBox(0, 0, 0, 12, 1.2, 12, platMat, { texRepeat: [3, 3] });
+    addBox(0, 0, 7.2, 4.4, 0.6, 2.6, platMat, { texRepeat: [1, 1] });
+    addBox(0, 0, -7.2, 4.4, 0.6, 2.6, platMat, { texRepeat: [1, 1] });
+
+    // Колонны с фонарями
+    const colMat = lam(T.wall, 0x777777);
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4 + Math.PI / 8;
+      const x = Math.cos(a) * 19, z = Math.sin(a) * 19;
+      addBox(x, 0, z, 1.7, 6, 1.7, colMat, { texRepeat: [1, 2] });
+      if (i % 2 === 0) {
+        const pl = new THREE.PointLight(0xffa050, 42, 20, 2); pl.position.set(x, 5.2, z); scene.add(pl); lights.push(pl);
+      }
+    }
+
+    // Ящики
+    const crateMat = lam(T.crate, 0xb0a890);
+    const crates = [
+      [8, 0, 14, 1.5], [9.6, 0, 14.4, 1.1], [8.7, 1.5, 14.2, 1.0],
+      [-13, 0, 9, 1.4], [-13, 1.4, 9, 0.9],
+      [15, 0, -9, 1.6], [-9, 0, -16, 1.3], [-10.4, 0, -15.6, 1.0],
+      [18, 0, 6, 1.2], [-17, 0, -4, 1.5], [6, 0, -20, 1.1], [-22, 0, 12, 1.3],
+    ];
+    for (const [x, y, z, s] of crates) addBox(x, y, z, s, s, s, crateMat);
+
+    // Аптечки
+    const spots = [[12.5, 0, 12.5], [-12.5, 0, -12.5], [12.5, 0, -12.5], [-12.5, 0, 12.5]];
+    const crossMatA = new THREE.MeshBasicMaterial({ color: 0xff3344 });
+    const glowMat = new THREE.SpriteMaterial({ map: T.glow, color: 0xff3344, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+    for (const [x, baseY, z] of spots) {
+      const g = new THREE.Group(); g.position.set(x, baseY, z);
+      const a = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.13, 0.13), crossMatA);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.13), crossMatA);
+      const glow = new THREE.Sprite(glowMat); glow.scale.setScalar(1.4);
+      g.add(a, b, glow); scene.add(g); meshes.push(g);
+      pickups.push({ g, x, y: baseY, z, active: true, timer: 0 });
+    }
   }
 
-  // ==========================================================
-  // Физика: земля с учётом «ступенек» + выталкивание из ящиков/стен
+  // ==========================================================================
+  // 2. КАРТА: КОМПЛЕКС «СЕКТОР-4: КАТАКОМБЫ» (Ветвящиеся коридоры и комнаты)
+  // ==========================================================================
+  else if (mapId === 'catacombs') {
+    // Тёмный зловещий свет
+    const hemi = new THREE.HemisphereLight(0x423438, 0x0a060d, 0.45); scene.add(hemi); lights.push(hemi);
+    const amb = new THREE.AmbientLight(0x22181d, 0.35); scene.add(amb); lights.push(amb);
+
+    const floorMat = lam(T.floor, 0x857f78);
+    const wallMat = lam(T.wall, 0x908c88);
+    const crateMat = lam(T.crate, 0x887d6e);
+    const metalMat = lam(T.platform, 0x5a6068);
+
+    // Пол всего комплекса
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(68, 68), floorMat);
+    floor.rotation.x = -Math.PI / 2; scene.add(floor); meshes.push(floor);
+
+    // Внешняя ограничивающая коробка комплекса
+    addBox(0, 0, -34, 68, 6, 1.5, wallMat);
+    addBox(0, 0, 34, 68, 6, 1.5, wallMat);
+    addBox(-34, 0, 0, 1.5, 6, 68, wallMat);
+    addBox(34, 0, 0, 1.5, 6, 68, wallMat);
+
+    // ------------------------------------------------------------------------
+    // ЦЕНТРАЛЬНЫЙ УЗЕЛ (Hub Room: [-8, 8] x [-8, 8])
+    // ------------------------------------------------------------------------
+    // Углы центрального зала (оставляя выходы на N, S, E, W по 4м шириной)
+    addBox(-6.0, 0, -6.0, 4.0, 5.5, 4.0, wallMat); // SW
+    addBox(6.0, 0, -6.0, 4.0, 5.5, 4.0, wallMat);  // SE
+    addBox(-6.0, 0, 6.0, 4.0, 5.5, 4.0, wallMat);  // NW
+    addBox(6.0, 0, 6.0, 4.0, 5.5, 4.0, wallMat);   // NE
+
+    // Центральный генератор энергии с пульсирующим аварийным светом
+    addBox(0, 0, 0, 2.4, 3.5, 2.4, metalMat);
+    addBox(0, 3.5, 0, 1.2, 0.8, 1.2, neonOrange);
+    const genLight = new THREE.PointLight(0xff6020, 32, 14, 2); genLight.position.set(0, 3.8, 0); scene.add(genLight); lights.push(genLight);
+
+    // ------------------------------------------------------------------------
+    // СЕВЕРНОЕ КРЫЛО: Коридор -> Биолаборатория
+    // ------------------------------------------------------------------------
+    // Стены северного коридора (Z: 8..20)
+    addBox(-2.8, 0, 14.0, 1.2, 5.5, 12.0, wallMat); // западная стена
+    addBox(2.8, 0, 14.0, 1.2, 5.5, 12.0, wallMat);  // восточная стена
+
+    // Биолаборатория (Z: 20..32, X: -14..14)
+    addBox(-8.5, 0, 20.0, 10.5, 5.5, 1.2, wallMat); // южная стена слева от двери
+    addBox(8.5, 0, 20.0, 10.5, 5.5, 1.2, wallMat);  // южная стена справа от двери
+    addBox(-14.5, 0, 26.0, 1.2, 5.5, 12.0, wallMat); // западная стена лабы
+    addBox(14.5, 0, 26.0, 1.2, 5.5, 12.0, wallMat);  // восточная стена лабы
+
+    // Столы и капсулы внутри биолабы
+    addBox(-6.0, 0, 26.0, 2.2, 1.1, 4.0, metalMat);
+    addBox(6.0, 0, 26.0, 2.2, 1.1, 4.0, metalMat);
+    const labLight = new THREE.PointLight(0x3388ff, 38, 18, 2); labLight.position.set(0, 4.5, 26.0); scene.add(labLight); lights.push(labLight);
+
+    // Портал спавна 1 (Глубина северной лаборатории)
+    spawnPoints.push(V3(0, 0, 29.5));
+
+    // ------------------------------------------------------------------------
+    // ЮЖНОЕ КРЫЛО: Коридор деконтаминации -> Зона хранения
+    // ------------------------------------------------------------------------
+    // Стены южного коридора (Z: -20..-8)
+    addBox(-2.8, 0, -14.0, 1.2, 5.5, 12.0, wallMat);
+    addBox(2.8, 0, -14.0, 1.2, 5.5, 12.0, wallMat);
+
+    // Зона хранения (Z: -32..-20, X: -13..13)
+    addBox(-8.0, 0, -20.0, 9.5, 5.5, 1.2, wallMat);
+    addBox(8.0, 0, -20.0, 9.5, 5.5, 1.2, wallMat);
+    addBox(-13.5, 0, -26.0, 1.2, 5.5, 12.0, wallMat);
+    addBox(13.5, 0, -26.0, 1.2, 5.5, 12.0, wallMat);
+
+    // Ящики в хранилище (укрытия)
+    addBox(-5.0, 0, -25.0, 1.6, 1.6, 1.6, crateMat);
+    addBox(-5.0, 1.6, -25.0, 1.2, 1.2, 1.2, crateMat);
+    addBox(5.5, 0, -26.5, 1.8, 1.8, 1.8, crateMat);
+    addBox(0.0, 0, -24.0, 1.4, 1.4, 1.4, crateMat);
+    const storeLight = new THREE.PointLight(0xff2418, 42, 18, 2); storeLight.position.set(0, 4.5, -26.0); scene.add(storeLight); lights.push(storeLight);
+
+    // Портал спавна 2 (Хранилище)
+    spawnPoints.push(V3(0, 0, -29.5));
+
+    // ------------------------------------------------------------------------
+    // ВОСТОЧНОЕ КРЫЛО: Ветвящийся лабиринт техобслуживания
+    // ------------------------------------------------------------------------
+    // Выход на восток (X: 8..18, Z: -2.5..2.5)
+    addBox(13.0, 0, -3.0, 10.0, 5.5, 1.2, wallMat);
+    addBox(13.0, 0, 3.0, 10.0, 5.5, 1.2, wallMat);
+
+    // Восточный развилочный Т-образный тоннель (X: 18..28)
+    // Разделительная стена
+    addBox(24.0, 0, 0, 1.2, 5.5, 14.0, wallMat);
+    addBox(18.0, 0, 12.0, 1.2, 5.5, 14.0, wallMat);
+    addBox(18.0, 0, -12.0, 1.2, 5.5, 14.0, wallMat);
+    addBox(29.0, 0, 10.0, 1.2, 5.5, 18.0, wallMat);
+    addBox(29.0, 0, -10.0, 1.2, 5.5, 18.0, wallMat);
+
+    const eastLightN = new THREE.PointLight(0xffa040, 30, 14, 2); eastLightN.position.set(21.0, 4.0, 12.0); scene.add(eastLightN); lights.push(eastLightN);
+    const eastLightS = new THREE.PointLight(0xff4030, 30, 14, 2); eastLightS.position.set(21.0, 4.0, -12.0); scene.add(eastLightS); lights.push(eastLightS);
+
+    // Портал спавна 3 (Восточный тупик)
+    spawnPoints.push(V3(25.5, 0, 15.0));
+
+    // ------------------------------------------------------------------------
+    // ЗАПАДНОЕ КРЫЛО: Двойные параллельные фланговые коридоры
+    // (Позволяют монстрам обходить игрока с тыла через перемычки!)
+    // ------------------------------------------------------------------------
+    // Выход на запад (X: -16..-8)
+    addBox(-12.0, 0, -3.0, 8.0, 5.5, 1.2, wallMat);
+    addBox(-12.0, 0, 3.0, 8.0, 5.5, 1.2, wallMat);
+
+    // Внутренняя стена тоннеля 1 (X = -16) с двумя проходами для фланкирования
+    addBox(-16.0, 0, -14.0, 1.2, 5.5, 10.0, wallMat);
+    addBox(-16.0, 0, 0.0, 1.2, 5.5, 6.0, wallMat);
+    addBox(-16.0, 0, 14.0, 1.2, 5.5, 10.0, wallMat);
+
+    // Разделительная стена между тоннелем 1 и 2 (X = -23) с проходами на Z=-7 и Z=7
+    addBox(-23.0, 0, -18.0, 1.2, 5.5, 8.0, wallMat);
+    addBox(-23.0, 0, 0.0, 1.2, 5.5, 8.0, wallMat);
+    addBox(-23.0, 0, 18.0, 1.2, 5.5, 8.0, wallMat);
+
+    // Внешняя стена тоннеля 2 (X = -29.5)
+    addBox(-29.5, 0, 0.0, 1.2, 5.5, 38.0, wallMat);
+
+    const westLight1 = new THREE.PointLight(0x77dd55, 28, 14, 2); westLight1.position.set(-19.5, 4.0, 7.0); scene.add(westLight1); lights.push(westLight1);
+    const westLight2 = new THREE.PointLight(0xff5533, 28, 14, 2); westLight2.position.set(-26.0, 4.0, -7.0); scene.add(westLight2); lights.push(westLight2);
+
+    // Портал спавна 4 (Западный фланговый тоннель)
+    spawnPoints.push(V3(-26.0, 0, 0));
+
+    // Аптечки в тактических перекрестках катакомб
+    const catacombSpots = [
+      [-6.0, 0, 24.0], // в лаборатории
+      [5.5, 0, -23.5], // в хранилище
+      [21.0, 0, 6.0],  // на восточном перекрестке
+      [-19.5, 0, -7.0], // в западном коридоре
+    ];
+    const crossMatA = new THREE.MeshBasicMaterial({ color: 0xff3344 });
+    const glowMat = new THREE.SpriteMaterial({ map: T.glow, color: 0xff3344, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+    for (const [x, baseY, z] of catacombSpots) {
+      const g = new THREE.Group(); g.position.set(x, baseY, z);
+      const a = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.13, 0.13), crossMatA);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.13), crossMatA);
+      const glow = new THREE.Sprite(glowMat); glow.scale.setScalar(1.4);
+      g.add(a, b, glow); scene.add(g); meshes.push(g);
+      pickups.push({ g, x, y: baseY, z, active: true, timer: 0 });
+    }
+  }
+
+  // ==========================================================================
+  // Физика: проверка пола со ступеньками + выталкивание из стен
+  // ==========================================================================
   const STEP = 0.7;
   function groundTopAt(x, z, footY) {
     let best = 0;
@@ -177,9 +293,9 @@ export function buildArena(scene, T) {
     }
     return best;
   }
+
   function clampCircle(pos, r, footY, height) {
     for (const c of colliders) {
-      // только если препятствие реально выше ног
       if (c.max.y - footY <= STEP) continue;
       if (footY + height < c.min.y) continue;
       const nx = Math.max(c.min.x, Math.min(pos.x, c.max.x));
@@ -191,18 +307,16 @@ export function buildArena(scene, T) {
         const d = Math.sqrt(d2), push = (r - d) / d;
         pos.x += dx * push; pos.z += dz * push;
       } else {
-        // внутри бокса: выталкиваем по минимальной оси
         const l = pos.x - c.min.x, rgt = c.max.x - pos.x, tp = pos.z - c.min.z, bt = c.max.z - pos.z;
         const m = Math.min(l, rgt, tp, bt);
         if (m === l) pos.x = c.min.x - r; else if (m === rgt) pos.x = c.max.x + r;
         else if (m === tp) pos.z = c.min.z - r; else pos.z = c.max.z + r;
       }
     }
-    // границы арены на всякий случай
-    pos.x = Math.max(-31, Math.min(31, pos.x));
-    pos.z = Math.max(-31, Math.min(31, pos.z));
+    pos.x = Math.max(-33, Math.min(33, pos.x));
+    pos.z = Math.max(-33, Math.min(33, pos.z));
   }
-  // луч против мира (для пуль): AABB-слэб метод + пол
+
   function raycastWorld(o, d, maxDist) {
     let bestT = maxDist, normal = null;
     for (const c of colliders) {
@@ -223,10 +337,9 @@ export function buildArena(scene, T) {
         if (nAxis >= 0) normal[['x', 'y', 'z'][nAxis]] = nSign; else normal.copy(d).negate();
       }
     }
-    // пол
     if (d.y < -1e-6) {
       const t = -o.y / d.y;
-      if (t > 0.001 && t < bestT && Math.abs(o.x + d.x * t) < 32 && Math.abs(o.z + d.z * t) < 32) {
+      if (t > 0.001 && t < bestT && Math.abs(o.x + d.x * t) < 33 && Math.abs(o.z + d.z * t) < 33) {
         bestT = t; normal = V3(0, 1, 0);
       }
     }
@@ -234,7 +347,6 @@ export function buildArena(scene, T) {
   }
 
   function updatePickups(dt, time, playerPos, onPickup) {
-    // пульс порталов
     portalMat.opacity = 0.38 + Math.sin(time * 2.6) * 0.14;
     for (const p of pickups) {
       if (!p.active) {
@@ -253,7 +365,27 @@ export function buildArena(scene, T) {
       }
     }
   }
+
   function resetPickups() { for (const p of pickups) { p.active = true; p.g.visible = true; p.timer = 0; } }
 
-  return { colliders, spawnPoints, groundTopAt, clampCircle, raycastWorld, updatePickups, resetPickups };
+  function clearMap() {
+    for (const m of meshes) scene.remove(m);
+    for (const l of lights) scene.remove(l);
+    meshes.length = 0; lights.length = 0; colliders.length = 0; spawnPoints.length = 0; pickups.length = 0;
+  }
+
+  const curMapDef = MAPS[mapId] || MAPS.arena;
+
+  return {
+    mapId,
+    mapDef: curMapDef,
+    colliders,
+    spawnPoints,
+    groundTopAt,
+    clampCircle,
+    raycastWorld,
+    updatePickups,
+    resetPickups,
+    clearMap,
+  };
 }

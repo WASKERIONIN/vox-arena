@@ -3,11 +3,11 @@ import { rand, pick } from './config.js';
 import { buildMonster, poseMonster, createStumpCap } from './monsters.js';
 import { Ragdoll, SeveredLimbProp } from './ragdoll.js';
 
-// 4 типа тварей (процедурный боди-хоррор): бой, скорость, аним-длительности, устойчивость (poise)
+// 4 типа тварей: уникальные тактики, скорости, poise и анимации
 export const TYPES = {
   minion:  { hp: 36,  speed: 4.8, dmg: 8,  score: 100, radius: 0.4,  height: 1.85, baseY: 0,
              atkDur: 0.6, dieDur: 1.5, range: 1.9, cd: [0.7, 1.2], maxPoise: 42, label: 'СКОРОХОД' },
-  rogue:   { hp: 30,  speed: 4.0, dmg: 10, score: 120, radius: 0.42, height: 1.55, baseY: 0,
+  rogue:   { hp: 30,  speed: 4.2, dmg: 10, score: 120, radius: 0.42, height: 1.55, baseY: 0,
              atkDur: 0.85, dieDur: 1.5, range: 1.85, cd: [0.7, 1.2], maxPoise: 48, label: 'РЕЗАК' },
   warrior: { hp: 150, speed: 2.3, dmg: 24, score: 250, radius: 0.62, height: 2.3, baseY: 0,
              atkDur: 1.3, dieDur: 1.9, range: 2.5, cd: [1.2, 1.8], maxPoise: 110, label: 'КЛЕЩ' },
@@ -43,7 +43,6 @@ export class EnemyManager {
     const body = built.root;
     group.add(body);
 
-    // Клонируем материалы под каждую тварь для независимых вспышек урона и свечений
     const mats = [];
     body.traverse(o => {
       if (o.isMesh) {
@@ -53,7 +52,6 @@ export class EnemyManager {
       }
     });
 
-    // blob-тень под ногами
     const sh = new THREE.Mesh(
       new THREE.PlaneGeometry(T.radius * 3.4, T.radius * 3.4),
       new THREE.MeshBasicMaterial({ map: this.tex.shadow, transparent: true, opacity: 0.55, depthWrite: false })
@@ -63,6 +61,11 @@ export class EnemyManager {
 
     group.position.set(x, 0, z);
     this.scene.add(group);
+
+    // Распределяем тактические фланговые углы окружения (Surrounding Slots)
+    const activeCount = this.list.length;
+    const flankSlots = [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, 2.8];
+    const flankAngle = flankSlots[activeCount % flankSlots.length] + rand(-0.15, 0.15);
 
     const e = {
       typeName, T, group,
@@ -78,6 +81,14 @@ export class EnemyManager {
       baseY: T.baseY || 0,
       growlT: rand(2, 7), strafeDir: Math.random() < 0.5 ? 1 : -1,
       appliedHit: false, flashT: 0, staggerT: 0,
+
+      // --- Тактический ИИ (Tactical Flocking & Flanking) ---
+      flankAngle,
+      dodgeTimer: 0,
+      dodgeDir: Math.random() < 0.5 ? 1 : -1,
+      hitAndRunTimer: 0,
+      targetOffsetX: 0,
+      targetOffsetZ: 0,
 
       // --- Физика отдачи и равновесие (Poise) ---
       poise: 0, maxPoise: T.maxPoise,
@@ -165,7 +176,6 @@ export class EnemyManager {
     if (detachedJoint && detachedJoint.parent) {
       detachedJoint.parent.remove(detachedJoint);
 
-      // Добавляем заглушку культи на оставшееся тело
       if (capParent) {
         const cap = createStumpCap(this.tex, e.typeName === 'warrior' ? 1.4 : 1.0);
         cap.position.copy(capLocalPos);
@@ -173,21 +183,17 @@ export class EnemyManager {
         e.stumps[zone] = cap;
       }
 
-      // Спавним физический кусок в мире
       const prop = new SeveredLimbProp(detachedJoint, spawnWorldPos, impulseDir, zone, this.scene, this.fx, this.tex);
       this.severedProps.push(prop);
 
-      // Фонтан крови из культи
       this.fx.bloodFountain(spawnWorldPos, impulseDir.clone().add(new THREE.Vector3(0, 1.2, 0)).normalize(), zone === 'head' ? 52 : 36, 2.4);
       this.sfx.limbSever();
 
-      // Звуки и события интерфейса
       if (zone === 'head') {
         this.sfx.headshot();
         if (this.hooks.hud) this.hooks.hud.styleEvent('ДЕКАПИТАЦИЯ! +200');
         e.hp = 0;
 
-        // 40% шанс на агонический слепой рывок без головы (Headless Rampage) для скороходов и резаков
         const canRampage = (e.typeName === 'minion' || e.typeName === 'rogue') && (Math.random() < 0.45);
         if (canRampage) {
           e.state = 'headless_rampage';
@@ -216,7 +222,6 @@ export class EnemyManager {
     }
   }
 
-  // Запуск падения рэгдолла при накоплении урона (Knockdown)
   _triggerKnockdown(e, dir, force = 9.0, hitZone = 'torso', hitPoint = null, becomesCrawler = false) {
     if (e.state === 'knockdown' || e.state === 'corpse_ragdoll' || e.state === 'dead') return;
 
@@ -237,7 +242,6 @@ export class EnemyManager {
     if (this.hooks.hud && !becomesCrawler) this.hooks.hud.styleEvent('СБИТ С НОГ! +40');
   }
 
-  // Запуск смерти (разрыв на куски мяса или падение трупа)
   _triggerDeath(e, dir, hitPoint = null, decapitated = false) {
     const big = e.T === TYPES.warrior;
     const instantGib = !decapitated && (Math.random() < 0.2 || e.hp < -30);
@@ -271,29 +275,31 @@ export class EnemyManager {
     this.time += dt;
     const t = this.time, fx = this.fx, sfx = this.sfx;
 
-    // --- Обновление отстреленных конечностей на полу ---
+    // Обновление отстреленных конечностей
     for (let i = this.severedProps.length - 1; i >= 0; i--) {
       const prop = this.severedProps[i];
       const alive = prop.update(dt, arena);
       if (!alive) this.severedProps.splice(i, 1);
     }
 
-    // --- Обновление врагов ---
+    // Вектор направления взгляда игрока (для проверки прицеливания и уклонений)
+    const playerFwd = new THREE.Vector3();
+    player.camera.getWorldDirection(playerFwd);
+    playerFwd.y = 0; playerFwd.normalize();
+
+    // Обновление врагов
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
 
-      // Вспышка урона
       if (e.flashT > 0) {
         e.flashT -= dt;
         if (e.flashT <= 0) for (const m of e.mats) m.emissive.setHex(0x000000);
       }
 
-      // Восстановление устойчивости (Poise recovery)
       if (e.poise > 0) {
         e.poise = Math.max(0, e.poise - dt * 26);
       }
 
-      // Физическое затухание линейной и угловой отдачи от пуль (только для живых ходячих врагов)
       const canKnockback = (e.state === 'chase' || e.state === 'attack' || e.state === 'spawn');
       if (canKnockback && e.knockbackVel.lengthSq() > 0.001) {
         e.pos.x += e.knockbackVel.x * dt;
@@ -315,6 +321,10 @@ export class EnemyManager {
       const dist = Math.hypot(dx, dz);
       const nx = dx / (dist || 1), nz = dz / (dist || 1);
 
+      // Проверка: целится ли игрок прямо в этого монстра
+      const dotAim = (-nx * playerFwd.x - nz * playerFwd.z);
+      const isPlayerAimingAt = dotAim > 0.88;
+
       switch (e.state) {
         case 'spawn': {
           e.t += dt; e.animT += dt;
@@ -326,18 +336,70 @@ export class EnemyManager {
         case 'chase': {
           if (e.staggerT > 0) {
             e.staggerT -= dt;
-            // Во время легкого стаггера немного отшагивает, не замораживая фазу
             e.phase += dt * 3.5;
             break;
           }
           e.cdT -= dt;
-          let mx = nx, mz = nz;
-          if (e.T.ranged) {
-            if (dist < e.T.keepMin) { mx = -nx; mz = -nz; }
-            else if (dist < e.T.keepMax) { mx = -nz * e.strafeDir * 0.6; mz = nx * e.strafeDir * 0.6; }
-            if (Math.random() < dt * 0.3) e.strafeDir *= -1;
+          if (e.dodgeTimer > 0) e.dodgeTimer -= dt;
+          if (e.hitAndRunTimer > 0) e.hitAndRunTimer -= dt;
+
+          let moveX = nx, moveZ = nz;
+          let moveSpeed = e.speed;
+
+          // ==================================================================
+          // ТАКТИЧЕСКИЙ ИИ ПО ТИПАМ ВРАГОВ
+          // ==================================================================
+          if (e.typeName === 'minion') {
+            // СКОРОХОД: Тактическое уклонение (зигзаг) при наведении прицела игрока
+            if (isPlayerAimingAt && e.dodgeTimer <= 0 && dist > 3.0 && dist < 14.0) {
+              e.dodgeTimer = rand(0.35, 0.55);
+              e.dodgeDir = Math.random() < 0.5 ? 1 : -1;
+            }
+            if (e.dodgeTimer > 0) {
+              // Стрейф перпендикулярно лучу огня на повышенной скорости
+              const perpX = -nz * e.dodgeDir;
+              const perpZ = nx * e.dodgeDir;
+              moveX = nx * 0.45 + perpX * 0.85;
+              moveZ = nz * 0.45 + perpZ * 0.85;
+              moveSpeed = e.speed * 1.35;
+            } else {
+              // Фланговый заход по дуге
+              const cA = Math.cos(e.flankAngle * 0.5), sA = Math.sin(e.flankAngle * 0.5);
+              moveX = nx * cA - nz * sA;
+              moveZ = nx * sA + nz * cA;
+            }
+          } else if (e.typeName === 'rogue') {
+            // РЕЗАК: Скрытный заход с флангов и тыла (Flanking Stalker)
+            if (e.hitAndRunTimer > 0) {
+              // Отскок назад и вбок после удара
+              moveX = -nx * 0.6 + (-nz * e.strafeDir * 0.8);
+              moveZ = -nz * 0.6 + (nx * e.strafeDir * 0.8);
+            } else if (dist > e.T.range * 1.2) {
+              // Широкий фланговый охват
+              const cA = Math.cos(e.flankAngle), sA = Math.sin(e.flankAngle);
+              moveX = nx * cA - nz * sA;
+              moveZ = nx * sA + nz * cA;
+            }
+          } else if (e.typeName === 'warrior') {
+            // КЛЕЩ: Танк-авангард, прёт прямо по центру, продавливая игрока
+            moveX = nx;
+            moveZ = nz;
+          } else if (e.T.ranged) {
+            // ПЛОД: Дистанционный кайт и стрейф за укрытия
+            if (dist < e.T.keepMin) {
+              moveX = -nx; moveZ = -nz; // отступает при сближении игрока
+            } else if (dist < e.T.keepMax) {
+              moveX = -nz * e.strafeDir * 0.75 + nx * 0.15;
+              moveZ = nx * e.strafeDir * 0.75 + nz * 0.15;
+            }
+            if (Math.random() < dt * 0.4) e.strafeDir *= -1;
           }
-          this._moveWithSteering(e, mx, mz, e.speed, dt, arena);
+
+          // Нормализуем направление движения
+          const moveLen = Math.hypot(moveX, moveZ);
+          if (moveLen > 0.001) { moveX /= moveLen; moveZ /= moveLen; }
+
+          this._moveWithTacticalSteering(e, moveX, moveZ, moveSpeed, dt, arena);
 
           const targetRot = Math.atan2(dx, dz);
           let d = targetRot - e.group.rotation.y;
@@ -362,7 +424,6 @@ export class EnemyManager {
 
         case 'headless_rampage': {
           e.rampageT -= dt;
-          // Фонтан крови бьёт из обрубка шеи
           const neckY = e.pos.y + e.T.height * 0.78;
           fx.voxel(
             e.pos.x + rand(-0.05, 0.05), neckY, e.pos.z + rand(-0.05, 0.05),
@@ -371,11 +432,10 @@ export class EnemyManager {
             rand(0.045, 0.08), rand(1.0, 1.8), { bounce: 0.3 }
           );
 
-          // Слепое метание вперёд с лёгким рысканием
           const wander = Math.sin(t * 8) * 0.4;
           const mx = e.forwardX + wander * e.forwardZ;
           const mz = e.forwardZ - wander * e.forwardX;
-          this._moveWithSteering(e, mx, mz, e.speed * 0.85, dt, arena);
+          this._moveWithTacticalSteering(e, mx, mz, e.speed * 0.85, dt, arena);
 
           if (Math.random() < dt * 4.5) {
             fx.bloodFloor(e.pos.x + rand(-0.25, 0.25), e.pos.z + rand(-0.25, 0.25), rand(0.6, 1.1));
@@ -390,12 +450,11 @@ export class EnemyManager {
         case 'crawl_chase': {
           e.cdT -= dt;
           const crawlSpeed = e.speed * 0.45;
-          // Движение ТОЛЬКО во время тянущего гребка руками (s > 0), никакого скольжения при выносе рук
           const pullIntensity = Math.max(0, Math.sin(e.phase));
           const crawlSurge = pullIntensity * 2.1;
 
           if (crawlSurge > 0.05) {
-            this._moveWithSteering(e, nx, nz, crawlSpeed * crawlSurge, dt, arena);
+            this._moveWithTacticalSteering(e, nx, nz, crawlSpeed * crawlSurge, dt, arena);
           }
 
           const targetRot = Math.atan2(dx, dz);
@@ -419,7 +478,7 @@ export class EnemyManager {
         case 'attack': {
           e.t += dt; e.animT += dt;
           if (!e.T.ranged && dist > e.T.range * 0.6) {
-            this._moveWithSteering(e, nx, nz, 1.0, dt, arena);
+            this._moveWithTacticalSteering(e, nx, nz, 1.0, dt, arena);
           }
           if (!e.appliedHit && e.t >= e.atkDur * (e.T.ranged ? 0.55 : 0.45)) {
             e.appliedHit = true;
@@ -427,6 +486,7 @@ export class EnemyManager {
               this._fireProjectile(e, player);
             } else if (dist < e.T.range + 0.6) {
               player.damage(e.T.dmg, null, sfx, this.hooks.hud);
+              if (e.typeName === 'rogue') e.hitAndRunTimer = 0.75; // Резак отпрыгивает после атаки
             }
           }
           if (e.t >= e.atkDur + 0.12) {
@@ -502,7 +562,6 @@ export class EnemyManager {
             fx.bloodFloor(e.pos.x, e.pos.z, e.T === TYPES.warrior ? 1.8 : 1.2);
           }
 
-          // По истечении времени жизни труп растворяется в дымку и воксели
           if (e.corpseT >= e.corpseDur) {
             fx.dissolve(e.pos, e.T.radius * 1.1, e.T.height * 0.4);
             sfx.boneCrack();
@@ -527,7 +586,7 @@ export class EnemyManager {
       poseMonster(e, dt, t);
     }
 
-    // --- снаряды ПЛОДОВ ---
+    // Снаряды ПЛОДОВ
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.vel.y -= 5.5 * dt;
@@ -551,11 +610,14 @@ export class EnemyManager {
     }
   }
 
-  // движение с обходом препятствий + точное следование поверхности пола арены
-  _moveWithSteering(e, mx, mz, speed, dt, arena) {
-    const probe = 0.9 + e.T.radius;
-    const blocked = (x, z) => {
-      if (Math.abs(x) > 30.6 || Math.abs(z) > 30.6) return true;
+  // ==========================================================================
+  // Тактическое руление: обход стен, прохождение коридоров и дверей без застревания
+  // ==========================================================================
+  _moveWithTacticalSteering(e, wishX, wishZ, speed, dt, arena) {
+    const probe = 0.85 + e.T.radius;
+
+    const isBlocked = (x, z) => {
+      if (Math.abs(x) > 33.0 || Math.abs(z) > 33.0) return true;
       for (const c of arena.colliders) {
         if (c.max.y - e.pos.y <= 0.7) continue;
         if (e.pos.y + e.T.height < c.min.y) continue;
@@ -564,37 +626,54 @@ export class EnemyManager {
       }
       return false;
     };
-    let dirx = mx, dirz = mz;
-    if ((mx || mz) && blocked(e.pos.x + dirx * probe, e.pos.z + dirz * probe)) {
-      const base = Math.atan2(mz, mx);
+
+    let dirx = wishX, dirz = wishZ;
+
+    // Проверка препятствия впереди лучами-усиками (Whisker Feeler Navigation)
+    if ((wishX || wishZ) && isBlocked(e.pos.x + dirx * probe, e.pos.z + dirz * probe)) {
+      const baseAng = Math.atan2(wishZ, wishX);
       let found = false;
-      for (const s of [0.65, -0.65, 1.3, -1.3, 2.0, -2.0]) {
-        const a = base + s * (e.strafeDir || 1);
+      // Сканируем углы в обе стороны
+      for (const s of [0.55, -0.55, 1.1, -1.1, 1.6, -1.6, 2.2, -2.2]) {
+        const a = baseAng + s * (e.strafeDir || 1);
         const tx = Math.cos(a), tz = Math.sin(a);
-        if (!blocked(e.pos.x + tx * probe, e.pos.z + tz * probe)) { dirx = tx; dirz = tz; found = true; break; }
+        if (!isBlocked(e.pos.x + tx * probe, e.pos.z + tz * probe)) {
+          dirx = tx; dirz = tz;
+          found = true;
+          break;
+        }
       }
-      if (!found) { dirx = -mx; dirz = -mz; }
-      e.strafeDir *= -1;
+      if (!found) {
+        dirx = -wishX; dirz = -wishZ;
+        e.strafeDir *= -1;
+      }
     }
+
     e.pos.x += dirx * speed * dt;
     e.pos.z += dirz * speed * dt;
+
+    // Расталкивание между врагами (Anti-Clustering Boid Separation)
     this._separate(e);
+
     arena.clampCircle(e.pos, e.T.radius, e.pos.y, e.T.height);
 
-    // Точная привязка к поверхности пола
     const g = arena.groundTopAt(e.pos.x, e.pos.z, e.pos.y + 0.5);
     e.pos.y = g;
   }
 
+  // Мощное расталкивание монстров (предотвращает сбивание в кучу)
   _separate(e) {
     for (const o of this.list) {
       if (o === e || o.state === 'dying' || o.state === 'dead' || o.state === 'corpse_ragdoll') continue;
       const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z;
-      const rr = e.T.radius + o.T.radius;
+      const minDistance = e.T.radius + o.T.radius + 0.28; // увеличенная дистанция личного пространства
       const d2 = dx * dx + dz * dz;
-      if (d2 < rr * rr && d2 > 1e-6) {
-        const d = Math.sqrt(d2), push = (rr - d) * 0.5 / d;
-        e.pos.x += dx * push; e.pos.z += dz * push;
+
+      if (d2 < minDistance * minDistance && d2 > 1e-6) {
+        const d = Math.sqrt(d2);
+        const push = (minDistance - d) * 0.55 / d;
+        e.pos.x += dx * push;
+        e.pos.z += dz * push;
       }
     }
   }
@@ -609,8 +688,9 @@ export class EnemyManager {
     mesh.position.copy(start);
     this.scene.add(mesh);
 
+    // Упреждение цели (Predictive aim leading)
     const t = Math.min(1.2, Math.hypot(player.pos.x - start.x, player.pos.z - start.z) / 12);
-    const target = _v2.set(player.pos.x + player.vel.x * t * 0.5, player.pos.y + 1.1, player.pos.z + player.vel.z * t * 0.5);
+    const target = _v2.set(player.pos.x + player.vel.x * t * 0.65, player.pos.y + 1.1, player.pos.z + player.vel.z * t * 0.65);
     const dir = target.sub(start).normalize();
     this.projectiles.push({
       mesh, pos: start.clone(), vel: dir.multiplyScalar(12),
@@ -619,14 +699,12 @@ export class EnemyManager {
     this.sfx.portal();
   }
 
-  // Точный рейкаст по конечностям и телу врагов (Dismemberment hitbox test)
   raycast(o, d, maxDist) {
     let best = null;
 
     for (const e of this.list) {
       if (e.state === 'dead' || e.state === 'dying') continue;
 
-      // Если труп или сбит с ног — проверяем попадание по лежащему телу
       if (e.state === 'corpse_ragdoll' || e.state === 'knockdown') {
         const ox = o.x - e.pos.x, oz = o.z - e.pos.z;
         const r = e.T.radius * 1.35;
@@ -651,7 +729,6 @@ export class EnemyManager {
         continue;
       }
 
-      // Проверка живого врага
       const ox = o.x - e.pos.x, oz = o.z - e.pos.z;
       const r = e.T.radius * 1.25;
       const a = d.x * d.x + d.z * d.z;
@@ -671,8 +748,6 @@ export class EnemyManager {
       if (y < y0 - 0.05 || y > y1 + 0.1) continue;
 
       const hitP = new THREE.Vector3(o.x + d.x * t, y, o.z + d.z * t);
-
-      // Локальные координаты попадания относительно врага
       const relY = y - y0;
       const normY = relY / e.T.height;
 
@@ -711,25 +786,20 @@ export class EnemyManager {
     return best;
   }
 
-  // Физический сокрушительный пинок ногой игрока (Melee Kick)
   kickMelee(origin, dir, maxRange = 2.4, kickForce = 18, kickDmg = 55) {
     let hitSomething = false;
-    const horizontalDir = new THREE.Vector3(dir.x, 0, dir.z).normalize();
 
-    // 1. Проверка врагов в переднем секторе
     for (const e of this.list) {
       if (e.state === 'dead' || e.state === 'dying') continue;
       const dx = e.pos.x - origin.x, dz = e.pos.z - origin.z;
       const dist = Math.hypot(dx, dz);
       if (dist > maxRange + e.T.radius) continue;
 
-      // Проверка угла конуса пинка (~75 градусов)
       const dot = (dx * dir.x + dz * dir.z) / (dist || 1);
       if (dot < 0.35) continue;
 
       hitSomething = true;
 
-      // Если труп — пинаем тушу по арене с брызгами крови
       if (e.state === 'corpse_ragdoll') {
         if (e.ragdoll) {
           e.ragdoll.applyImpulse(dir, kickForce * 1.3, 'torso');
@@ -739,7 +809,6 @@ export class EnemyManager {
         continue;
       }
 
-      // Живой враг
       e.hp -= kickDmg;
       e.flashT = 0.12;
       for (const m of e.mats) m.emissive.setHex(0xaa1111);
@@ -752,20 +821,17 @@ export class EnemyManager {
       if (this.hooks.hud) {
         this.hooks.hud.hitmarker(e.hp <= 0);
         this.hooks.hud.styleEvent('ПИНОК! +' + (e.hp <= 0 ? '120' : '45'));
-        this.hooks.hud.addScreenBlood(0.35);
       }
 
       if (e.hp <= 0) {
         if (this.hooks.onKill) this.hooks.onKill(e, false, false);
         this._triggerDeath(e, dir, null, false);
       } else {
-        // Мгновенный срыв баланса и отбрасывание назад с падением
         e.poise = e.maxPoise + 50;
         this._triggerKnockdown(e, dir, kickForce, 'torso', null, e.severed.lLeg || e.severed.rLeg);
       }
     }
 
-    // 2. Проверка отстреленных голов и конечностей на полу — пинаем как мячи/снаряды!
     for (const prop of this.severedProps) {
       const dx = prop.pos.x - origin.x, dz = prop.pos.z - origin.z;
       const dist = Math.hypot(dx, dz);
@@ -824,14 +890,12 @@ export class EnemyManager {
   }
 }
 
-// Прикрепление обработчика урона и физических реакций
 export function attachEnemyDamage(e, mgr, hooks) {
   e.damage = function (amount, point, dir, hitInfo = {}) {
     const hitZone = typeof hitInfo === 'string' ? hitInfo : (hitInfo.hitZone || (hitInfo.head ? 'head' : 'torso'));
     const isHead = hitZone === 'head' || hitInfo.head;
     const shotDir = dir || UP;
 
-    // 1. Попадание по уже лежащему трупу -> физический разрыв туши выстрелом на куски мяса
     if (e.state === 'corpse_ragdoll') {
       const big = e.T === TYPES.warrior;
       mgr.fx.gib(point || e.pos, big);
@@ -849,10 +913,8 @@ export function attachEnemyDamage(e, mgr, hooks) {
     e.flashT = 0.09;
     for (const m of e.mats) m.emissive.setHex(0x881111);
 
-    // Выплеск крови из точки ранения
     mgr.fx.blood(point || e.pos, shotDir, isHead ? 28 : 15, isHead ? 1.45 : 1.15);
 
-    // 2. Ощутимая физическая отдача врагов при попадании (только когда враг стоит на ногах)
     if (e.state === 'chase' || e.state === 'attack' || e.state === 'spawn') {
       const kbForce = (amount * 0.22) * (e.typeName === 'warrior' ? 0.65 : 1.15);
       e.knockbackVel.x += shotDir.x * kbForce;
@@ -867,17 +929,14 @@ export function attachEnemyDamage(e, mgr, hooks) {
       }
     }
 
-    // Смещение позвоночника и груди (Recoil flinch)
     e.flinchPitch = rand(0.3, 0.55);
     e.flinchRoll = hitZone === 'lArm' ? 0.35 : hitZone === 'rArm' ? -0.35 : 0;
     e.flinchYaw = hitZone === 'lArm' ? 0.25 : hitZone === 'rArm' ? -0.25 : 0;
 
-    // Сбивание с шага
     if (e.state === 'chase') {
       e.staggerT = Math.min(0.2, amount / 85);
     }
 
-    // 3. Отстрел конечностей (Dismemberment)
     if (hitZone && hitZone !== 'torso' && hitZone !== 'corpse' && !e.severed[hitZone]) {
       e.limbs[hitZone] -= amount;
       if (e.limbs[hitZone] <= 0) {
@@ -885,7 +944,6 @@ export function attachEnemyDamage(e, mgr, hooks) {
       }
     }
 
-    // 4. Накопление физического импульса и падение (Knockdown)
     const poiseAdd = isHead ? amount * 4.5 : (hitZone === 'lLeg' || hitZone === 'rLeg') ? amount * 3.4 : amount * 2.4;
     e.poise += poiseAdd;
 
@@ -893,7 +951,6 @@ export function attachEnemyDamage(e, mgr, hooks) {
       mgr._triggerKnockdown(e, shotDir, 9.0, hitZone, point, e.severed.lLeg || e.severed.rLeg);
     }
 
-    // 5. Смерть врага
     if (e.hp <= 0 && e.state !== 'corpse_ragdoll' && e.state !== 'dead') {
       mgr._triggerDeath(e, shotDir, point, isHead);
     }

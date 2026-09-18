@@ -4,7 +4,7 @@ import { makeTextures } from './textures.js';
 import { PS1 } from './ps1.js';
 import { AudioSys } from './audio.js';
 import { FX } from './fx.js';
-import { buildArena } from './arena.js';
+import { buildArena, MAPS } from './arena.js';
 import { Player } from './player.js';
 import { EnemyManager } from './enemies.js';
 import { Waves } from './waves.js';
@@ -32,12 +32,14 @@ const fogObj = new THREE.Fog(0x12080a, 8, 85);
 scene.fog = settings.fog ? fogObj : null;
 
 const T = makeTextures();
-const arena = buildArena(scene, T);
+let currentMapId = 'catacombs';
+let arena = buildArena(scene, T, currentMapId);
 const sfx = new AudioSys();
 const fx = new FX(scene, T);
 fx.setCamera(camera);
+
 const enemies = new EnemyManager(scene, T, fx, sfx, {
-  onKill: null, hud: null, // заполняется ниже
+  onKill: null, hud: null,
 });
 const player = new Player(camera);
 
@@ -118,16 +120,28 @@ player.onDead = () => {
 };
 
 const waves = new Waves(enemies, arena, {
-  waveStart: (n, total) => { hud.setWave(n); hud.banner('ВОЛНА ' + n, 'ПРОТИВНИКОВ: ' + total); sfx.waveHorn(); },
+  waveStart: (n, total) => {
+    hud.setWave(n);
+    hud.banner('ВОЛНА ' + n, 'ПРОТИВНИКОВ: ' + total);
+    sfx.waveHorn();
+  },
   countdown: (t, next) => hud.countdown(t, next),
   portal: (x, z) => { fx.portal(new THREE.Vector3(x, 0, z)); },
   waveClear: n => {
-    hud.banner('ВОЛНА ' + n + ' ЗАЧИЩЕНА', 'ВОССТАНОВЛЕНО +20 БРОНИ · СТИЛЬ +150');
-    player.heal(20); stylePts += 150; sfx.waveClear();
+    hud.banner('ВОЛНА ' + n + ' ЗАЧИЩЕНА', 'ВОССТАНОВЛЕНО +25 БРОНИ · СТИЛЬ +150');
+    player.heal(25); stylePts += 150; sfx.waveClear();
   },
 });
 
 function onPickup() { player.heal(35); sfx.pickup(); hud.styleEvent('+35 БРОНЕПЛАСТИНЫ'); }
+
+function setMap(mapId) {
+  if (currentMapId === mapId && arena) return;
+  currentMapId = mapId;
+  if (arena) arena.clearMap();
+  arena = buildArena(scene, T, currentMapId);
+  waves.setArena(arena);
+}
 
 // ============================== ввод ==============================
 const input = { keys: new Set(), fire: false, fireOnce: false, kick: false, reload: false, jump: false, lookDX: 0, lookDY: 0 };
@@ -205,12 +219,17 @@ window.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { input.keys.clear(); input.fire = false; input.kick = false; });
 
 // ============================== переходы состояний ==============================
-function startRun() {
+function startRun(selectedMap = currentMapId) {
+  setMap(selectedMap);
   sfx.init();
   sfx.setVolumes(settings.sfxVol, settings.musicVol);
   sfx.startMusic();
   enemies.clear(); fx.clear(); arena.resetPickups();
-  player.reset();
+
+  // Начальная позиция игрока по карте
+  const spawn = arena.mapDef.playerSpawn;
+  player.reset(spawn.x, spawn.y, spawn.z, spawn.yaw);
+
   kills = score = shotsFired = shotsHit = headshots = stylePts = hitstop = 0;
   waves.reset();
   hud.forceClearOverlays();
@@ -229,6 +248,7 @@ function startRun() {
   state = 'playing';
   tryLock();
 }
+
 function pauseGame() {
   if (state !== 'playing') return;
   state = 'paused'; input.fire = false; input.kick = false;
@@ -248,10 +268,12 @@ function quitToMenu() {
   player.kickLeg.visible = false;
   document.exitPointerLock && document.exitPointerLock();
 }
+
 hud.onPlay = startRun;
 hud.onResume = resumeGame;
 hud.onQuit = quitToMenu;
 hud.onRestart = startRun;
+hud.onMapSelect = mapId => setMap(mapId);
 hud.onSettingsClose = () => { if (state === 'paused') hud.screen('pause'); else hud.screen('menu'); };
 
 // ============================== запуск ==============================
@@ -288,30 +310,31 @@ function frame(now) {
     enemies.update(dt, player, arena);
     waves.update(dt);
     arena.updatePickups(dt, time, player.pos, onPickup);
-    fx.update(dt);
-    hud.updateBlood(dt);
+    fx.update(dt, arena);
     stylePts = Math.max(0, stylePts - 55 * dt);
     hud.setHP(player.hp, player.maxHp);
     hud.setAmmo(player.mag, player.magSize, player.reloading, player.curSlot === 1);
     hud.setStyle(stylePts);
   } else if (state === 'menu') {
-    const a = time * 0.1;
-    camera.position.set(Math.cos(a) * 23, 8.5 + Math.sin(a * 0.6) * 1.5, Math.sin(a) * 23);
-    camera.lookAt(0, 1.6, 0);
-    fx.update(dt);
-    hud.updateBlood(dt);
+    const a = time * 0.12;
+    if (currentMapId === 'catacombs') {
+      camera.position.set(Math.cos(a) * 14, 6.0 + Math.sin(a * 0.5) * 1.0, Math.sin(a) * 14);
+      camera.lookAt(0, 1.4, 0);
+    } else {
+      camera.position.set(Math.cos(a) * 23, 8.5 + Math.sin(a * 0.6) * 1.5, Math.sin(a) * 23);
+      camera.lookAt(0, 1.6, 0);
+    }
+    fx.update(dt, arena);
   } else if (state === 'dead') {
     deathT += dt;
     const fall = Math.min(1, deathT * 1.8);
     const eye = player.eyeH * (1 - fall) + 0.35 * fall;
     camera.rotation.z = fall * 0.55;
     camera.position.set(player.pos.x, player.pos.y + eye, player.pos.z);
-    fx.update(dt);
-    hud.updateBlood(dt);
+    fx.update(dt, arena);
     enemies.update(dt * 0.25, player, arena);
   } else {
-    fx.update(dt * 0.5);
-    hud.updateBlood(dt);
+    fx.update(dt * 0.5, arena);
   }
 
   ps1.render(scene, camera);
@@ -331,13 +354,14 @@ window.__VOX__ = {
   ready: false,
   get state() { return state; },
   gfx: applyFns,
-  start: () => startRun(),
+  start: (map = 'catacombs') => startRun(map),
   spawn: (typeName = 'minion', dx = 0, dz = -6) => {
     const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
     const wx = player.pos.x + dx * c - dz * s;
     const wz = player.pos.z + dx * s + dz * c;
     return enemies.spawn(typeName, wx, wz, 1);
   },
+  setMap: mapId => setMap(mapId),
   enemies, player, waves, hud, fx,
   killAll: () => enemies.killAllInstant(),
 };

@@ -137,9 +137,9 @@ export class Player {
   get reloadDur() { return this.curWeapon.reloadDur; }
   get eyePos() { return _hitP.set(this.pos.x, this.pos.y + this.eyeH, this.pos.z); }
 
-  reset() {
-    this.pos.set(0, 0, 16); this.vel.set(0, 0, 0);
-    this.yaw = 0; this.pitch = 0;
+  reset(x = 0, y = 0, z = 16, yaw = 0) {
+    this.pos.set(x, y, z); this.vel.set(0, 0, 0);
+    this.yaw = yaw; this.pitch = 0;
     this.hp = this.maxHp;
 
     this.weapons[0].mag = this.weapons[0].magSize;
@@ -633,9 +633,9 @@ export class Player {
         if (hitEnemy.hp <= 0) totalKilled++;
         if (this.onHit) this.onHit({ head, killed: hitEnemy.hp <= 0, enemy: hitEnemy, hitZone, isCorpse });
 
-        // В упор обрез заливает экран кровью!
-        if (eHit.dist < 3.8 && hud) {
-          hud.addScreenBlood(0.65);
+        // В упор обрез порождает мощный фонтан брызг
+        if (eHit.dist < 3.8) {
+          fx.bloodFountain(point, dir.clone().add(new THREE.Vector3(0, 0.6, 0)).normalize(), 35, 2.0);
         }
       } else if (wHit) {
         fx.impact(point, wHit.normal);
@@ -652,8 +652,7 @@ export class Player {
     this.hp = Math.max(0, this.hp - amount);
     this.shake = Math.min(0.55, this.shake + 0.22);
     sfx.hurt();
-    hud.damageFlash();
-    hud.addScreenBlood(0.35);
+    if (hud) hud.damageFlash();
     if (this.hp <= 0 && this.onDead) this.onDead();
   }
 
