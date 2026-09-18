@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { ASSETS } from './assets.js';
 import { loadSettings, saveSettings, PARTICLE_BUDGET, clamp } from './config.js';
 import { makeTextures } from './textures.js';
 import { PS1 } from './ps1.js';
@@ -9,7 +7,7 @@ import { FX } from './fx.js';
 import { buildArena } from './arena.js';
 import { Player } from './player.js';
 import { buildRifle } from './weapon-model.js';
-import { EnemyManager, TYPES } from './enemies.js';
+import { EnemyManager } from './enemies.js';
 import { Waves } from './waves.js';
 import { HUD } from './hud.js';
 
@@ -228,29 +226,8 @@ hud.onQuit = quitToMenu;
 hud.onRestart = startRun;
 hud.onSettingsClose = () => { if (state === 'paused') hud.screen('pause'); else hud.screen('menu'); };
 
-// ============================== загрузка моделей ==============================
-function dataURLtoArrayBuffer(u) {
-  const b = atob(u.split(',')[1]);
-  const a = new Uint8Array(b.length);
-  for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
-  return a.buffer;
-}
-async function boot() {
-  try {
-    const loader = new GLTFLoader();
-    const parsed = {};
-    for (const [type, cfg] of Object.entries(TYPES)) {
-      const buf = dataURLtoArrayBuffer(ASSETS[cfg.glb]);
-      const gltf = await new Promise((res, rej) => loader.parse(buf, '', res, rej));
-      const clips = {};
-      for (const c of gltf.animations) clips[c.name] = c;
-      parsed[type] = { scene: gltf.scene, clips };
-    }
-    enemies.setTemplates(parsed);
-  } catch (e) {
-    console.error('Ошибка загрузки моделей:', e);
-    document.querySelector('#menu .subtitle').textContent = 'ОШИБКА ЗАГРУЗКИ МОДЕЛЕЙ — см. консоль';
-  }
+// ============================== запуск (модели процедурные) ==============================
+function boot() {
   applyFns.all();
   player.gun.visible = false;
   state = 'menu';

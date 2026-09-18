@@ -190,5 +190,68 @@ export function makeTextures() {
     g.fillStyle = grd; g.beginPath(); g.arc(s / 2, s / 2, 28, 0, 7); g.fill();
   });
 
+  // --- боди-хоррор: мясо ---
+  T.flesh = makeTex(128, (g, s) => {
+    g.fillStyle = '#3d1410'; g.fillRect(0, 0, s, s);
+    const fibers = ['#4f1a12', '#5c2015', '#6b2818', '#7a3320', '#300d0a', '#8a3a24'];
+    for (let i = 0; i < 260; i++) {
+      g.strokeStyle = fibers[(Math.random() * fibers.length) | 0];
+      g.globalAlpha = 0.25 + Math.random() * 0.5;
+      g.lineWidth = 1 + Math.random() * 2;
+      const x = Math.random() * s, y = Math.random() * s;
+      const len = 8 + Math.random() * 34, a = Math.random() * 0.7 - 0.35;
+      g.beginPath(); g.moveTo(x, y);
+      g.quadraticCurveTo(x + Math.sin(a) * len * 0.5 + (Math.random() * 8 - 4), y - len * 0.6, x + Math.sin(a) * len, y - len);
+      g.stroke();
+    }
+    // вены
+    g.globalAlpha = 1;
+    for (let i = 0; i < 14; i++) {
+      g.strokeStyle = Math.random() < 0.5 ? '#200605' : '#5a1410';
+      g.lineWidth = 1;
+      let x = Math.random() * s, y = Math.random() * s;
+      g.beginPath(); g.moveTo(x, y);
+      for (let k = 0; k < 5; k++) { x += Math.random() * 26 - 13; y += 8 + Math.random() * 18; g.lineTo(x, y); }
+      g.stroke();
+    }
+    // гниль и мокрый блеск
+    for (let i = 0; i < 26; i++) {
+      g.fillStyle = `rgba(${10 + Math.random() * 20},${4},${4},${0.15 + Math.random() * 0.25})`;
+      const x = Math.random() * s, y = Math.random() * s, r = 2 + Math.random() * 10;
+      g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+    }
+    noise(g, s, 500, 0.22); noise(g, s, 120, 0.05, true);
+  }, { repeat: [2, 2] });
+
+  // --- мембрана плода (летающий паразит) ---
+  T.membrane = makeTex(128, (g, s) => {
+    g.fillStyle = '#241018'; g.fillRect(0, 0, s, s);
+    const cols = ['#331524', '#401b2e', '#2a0f1b', '#4e2138', '#1c0a12'];
+    for (let i = 0; i < 200; i++) {
+      g.fillStyle = cols[(Math.random() * cols.length) | 0];
+      g.globalAlpha = 0.2 + Math.random() * 0.4;
+      const x = Math.random() * s, y = Math.random() * s, r = 3 + Math.random() * 16;
+      g.beginPath(); g.ellipse(x, y, r, r * (0.4 + Math.random() * 0.8), Math.random() * 3, 0, 7); g.fill();
+    }
+    g.globalAlpha = 1;
+    // просвечивающие органы
+    for (let i = 0; i < 7; i++) {
+      const x = 16 + Math.random() * (s - 32), y = 16 + Math.random() * (s - 32);
+      const grd = g.createRadialGradient(x, y, 1, x, y, 14);
+      grd.addColorStop(0, 'rgba(150,40,90,.5)'); grd.addColorStop(1, 'rgba(60,15,40,0)');
+      g.fillStyle = grd; g.beginPath(); g.arc(x, y, 14, 0, 7); g.fill();
+    }
+    // складки
+    g.strokeStyle = 'rgba(10,4,8,.8)';
+    for (let i = 0; i < 10; i++) {
+      g.lineWidth = 1 + Math.random();
+      let x = Math.random() * s, y = 0;
+      g.beginPath(); g.moveTo(x, y);
+      while (y < s) { y += 6 + Math.random() * 10; x += Math.random() * 16 - 8; g.lineTo(x, y); }
+      g.stroke();
+    }
+    noise(g, s, 380, 0.2);
+  }, { repeat: [2, 2] });
+
   return T;
 }

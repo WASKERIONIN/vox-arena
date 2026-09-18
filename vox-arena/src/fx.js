@@ -222,7 +222,6 @@ export class FX {
 
   smokePuff(p, scale = 1, color = 0x9a908a, opacity = 0.4) {
     // не спавним дым вплотную к камере — закрывает экран «пеленой»
-    const cam = this.scene.children.find ? null : null;
     const o = this.smokes[this.smokeI = (this.smokeI + 1) % this.smokes.length];
     o.s.visible = true;
     o.s.position.copy(p);

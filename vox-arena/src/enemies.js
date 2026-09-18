@@ -1,53 +1,45 @@
 import * as THREE from 'three';
-import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { rand, pick } from './config.js';
+import { buildMonster, poseMonster } from './monsters.js';
 
-// 4 типа врагов на базе KayKit Skeletons (CC0): аутентичные модели + анимации
+// 4 типа тварей (процедурный боди-хоррор): бой, скорость, аним-длительности
 export const TYPES = {
-  minion:  { glb: 'Skeleton_Minion',  hp: 36,  speed: 7.4, dmg: 8,  score: 100, radius: 0.42, height: 1.85, scaleH: 1.8,
-             walk: 'Running_A', idle: 'Idle_Combat', attack: '1H_Melee_Attack_Stab', range: 2.0, cd: [0.7, 1.1], label: 'ОТСТУПНИК' },
-  rogue:   { glb: 'Skeleton_Rogue',   hp: 30,  speed: 6.6, dmg: 10, score: 120, radius: 0.4,  height: 1.85, scaleH: 1.8,
-             walk: 'Running_B', idle: 'Idle_Combat', attack: '1H_Melee_Attack_Slice_Diagonal', range: 1.9, cd: [0.6, 1.0], label: 'НОЖОВЩИК' },
-  warrior: { glb: 'Skeleton_Warrior', hp: 150, speed: 3.5, dmg: 24, score: 250, radius: 0.62, height: 2.3,  scaleH: 2.25,
-             walk: 'Walking_A', idle: 'Idle_Combat', attack: '2H_Melee_Attack_Chop', range: 2.6, cd: [1.1, 1.7], label: 'КОСТЯНОЙ ГРОМИЛА' },
-  mage:    { glb: 'Skeleton_Mage',    hp: 60,  speed: 3.4, dmg: 16, score: 200, radius: 0.45, height: 1.9,  scaleH: 1.9,
-             walk: 'Walking_A', idle: 'Idle', attack: 'Spellcast_Shoot', ranged: true, keepMin: 9, keepMax: 15, cd: [1.7, 2.5], label: 'НЕКРОМАНТ' },
+  minion:  { hp: 36,  speed: 7.4, dmg: 8,  score: 100, radius: 0.4,  height: 1.85, baseY: 0,
+             atkDur: 0.55, dieDur: 1.5, range: 2.0, cd: [0.7, 1.1], label: 'СКОРОХОД' },
+  rogue:   { hp: 30,  speed: 6.6, dmg: 10, score: 120, radius: 0.42, height: 1.55, baseY: 0,
+             atkDur: 0.85, dieDur: 1.5, range: 1.9, cd: [0.6, 1.0], label: 'РЕЗАК' },
+  warrior: { hp: 150, speed: 3.5, dmg: 24, score: 250, radius: 0.62, height: 2.3, baseY: 0,
+             atkDur: 1.3, dieDur: 1.9, range: 2.6, cd: [1.1, 1.7], label: 'КЛЕЩ' },
+  mage:    { hp: 60,  speed: 3.4, dmg: 16, score: 200, radius: 0.5,  height: 2.1, baseY: 0.45,
+             atkDur: 1.4, dieDur: 1.3, ranged: true, keepMin: 9, keepMax: 15, cd: [1.7, 2.5], label: 'ПЛОД' },
 };
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const SPAWN_T = 0.9;
 
 export class EnemyManager {
   constructor(scene, tex, fx, sfx, hooks) {
     this.scene = scene; this.tex = tex; this.fx = fx; this.sfx = sfx; this.hooks = hooks || {};
     this.list = []; this.projectiles = [];
-    this.templates = {};
-  }
-
-  setTemplates(parsed) {
-    // parsed: {typeName: {gltfScene, clips: {name: clip}}}
-    for (const [name, p] of Object.entries(parsed)) {
-      const box = new THREE.Box3().setFromObject(p.scene);
-      const h = Math.max(0.1, box.max.y - box.min.y);
-      this.templates[name] = { scene: p.scene, clips: p.clips, normScale: TYPES[name].scaleH / h };
-    }
+    this.time = 0;
+    this._dripC = new THREE.Color(0x5e0a08);
   }
 
   spawn(typeName, x, z, wave = 1) {
-    const T = TYPES[typeName], tpl = this.templates[typeName];
-    if (!tpl) return null;
+    const T = TYPES[typeName];
+    if (!T) return null;
     const group = new THREE.Group();
-    const body = skeletonClone(tpl.scene);
-    body.scale.setScalar(tpl.normScale);
-    // пропорции: слегка уменьшаем черепа (стилизация под «хардкор»)
-    body.traverse(o => { if (o.isBone && /head/i.test(o.name || '')) o.scale.multiplyScalar(0.78); });
+    const built = buildMonster(typeName, this.tex);
+    const body = built.root;
     group.add(body);
+    // материалы клонируем под каждую тварь (вспышка урона через emissive)
     const mats = [];
     body.traverse(o => {
       if (o.isMesh) {
         o.material = o.material.clone();
         o.frustumCulled = false;
-        mats.push(o.material);
+        if (o.material.emissive) mats.push(o.material);
       }
     });
     // blob-тень
@@ -61,34 +53,23 @@ export class EnemyManager {
     group.position.set(x, 0, z);
     this.scene.add(group);
 
-    const mixer = new THREE.AnimationMixer(body);
-    const act = {};
-    for (const [k, clip] of Object.entries(tpl.clips)) act[k] = mixer.clipAction(clip);
-
     const e = {
-      typeName, T, group, body, mats, mixer, act,
-      pos: group.position, hp: T.hp * (1 + wave * 0.07), maxHp: T.hp * (1 + wave * 0.07),
+      typeName, T, group,
+      root: body, j: built.joints, mats,
+      pos: group.position,
+      hp: T.hp * (1 + wave * 0.07), maxHp: T.hp * (1 + wave * 0.07),
       speed: T.speed * Math.min(1.28, 1 + wave * 0.02),
-      state: 'spawn', t: 0, cdT: rand(T.cd[0], T.cd[1]) * 0.6, appliedHit: false,
-      flashT: 0, staggerT: 0, strafeDir: Math.random() < 0.5 ? 1 : -1,
-      growlT: rand(2, 7), cur: null, dieClipDur: 1,
+      state: 'spawn', t: 0, animT: 0, animDur: SPAWN_T, atkDur: T.atkDur,
+      cdT: rand(T.cd[0], T.cd[1]) * 0.6,
+      phase: rand(0, 6.28), seed: rand(0, 20),
+      twitch: 0, spasm: 0, twist: rand(-0.16, 0.16), tilt: rand(-0.14, 0.14),
+      baseY: T.baseY || 0,
+      growlT: rand(2, 7), strafeDir: Math.random() < 0.5 ? 1 : -1,
+      appliedHit: false, flashT: 0, staggerT: 0,
     };
-    this.playAnim(e, 'spawn', 0.05, true);
     attachEnemyDamage(e, this, this.hooks);
     this.list.push(e);
     return e;
-  }
-
-  playAnim(e, name, fade = 0.18, once = false) {
-    const next = e.act[name];
-    if (!next || next === e.cur) return;
-    const prev = e.cur;
-    e.cur = next;
-    next.reset();
-    next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat);
-    next.clampWhenFinished = once;
-    if (prev && fade > 0) next.crossFadeFrom(prev, fade, false);
-    next.play();
   }
 
   get aliveCount() {
@@ -98,11 +79,11 @@ export class EnemyManager {
   }
 
   update(dt, player, arena) {
-    const fx = this.fx, sfx = this.sfx;
+    this.time += dt;
+    const t = this.time, fx = this.fx, sfx = this.sfx;
 
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
-      e.mixer.update(dt);
       if (e.flashT > 0) {
         e.flashT -= dt;
         if (e.flashT <= 0) for (const m of e.mats) m.emissive.setHex(0x000000);
@@ -113,13 +94,13 @@ export class EnemyManager {
 
       switch (e.state) {
         case 'spawn': {
-          e.t += dt;
-          if (e.t >= (e.act.spawn ? e.act.spawn.getClip().duration * 0.85 : 0.8)) { e.state = 'chase'; this.playAnim(e, e.T.idle, 0.15); }
+          e.t += dt; e.animT += dt;
+          poseMonster(e, dt, t);
+          if (e.t >= SPAWN_T) { e.state = 'chase'; e.t = 0; }
           break;
         }
         case 'chase': {
           if (e.staggerT > 0) { e.staggerT -= dt; break; }
-          this.playAnim(e, e.T.walk, 0.2);
           e.cdT -= dt;
           let mx = nx, mz = nz;
           if (e.T.ranged) {
@@ -136,23 +117,26 @@ export class EnemyManager {
           // атака?
           const wantAttack = e.T.ranged ? (dist < e.T.keepMax + 3) : (dist < e.T.range);
           if (wantAttack && e.cdT <= 0) {
-            e.state = 'attack'; e.t = 0; e.appliedHit = false;
-            this.playAnim(e, e.T.attack, 0.1, true);
-            e.dieClipDur = e.act[e.T.attack].getClip().duration;
+            e.state = 'attack'; e.t = 0; e.animT = 0; e.animDur = e.atkDur; e.appliedHit = false;
             if (!e.T.ranged) sfx.swing();
           }
           // рычание
           e.growlT -= dt;
           if (e.growlT <= 0) { e.growlT = rand(4, 9); sfx.growl(e.typeName === 'warrior' ? 60 : e.typeName === 'mage' ? 120 : 90); }
+          // подтёки крови из пасти у мясника и клеща
+          if (e.typeName !== 'mage' && Math.random() < dt * 1.1) {
+            const hd = e.typeName === 'warrior' ? e.T.height * 0.68 : e.T.height * 0.78;
+            fx.voxel(e.pos.x, e.pos.y + hd, e.pos.z, 0, -1.4, 0, this._dripC, 0.026, 1.7, { bounce: 0 });
+          }
           break;
         }
         case 'attack': {
-          e.t += dt;
+          e.t += dt; e.animT += dt;
           // лёгкий дожим вперёд у милишников
           if (!e.T.ranged && dist > e.T.range * 0.6) {
             this._moveWithSteering(e, nx, nz, 1.3, dt, arena);
           }
-          if (!e.appliedHit && e.t >= e.dieClipDur * (e.T.ranged ? 0.55 : 0.45)) {
+          if (!e.appliedHit && e.t >= e.atkDur * (e.T.ranged ? 0.55 : 0.45)) {
             e.appliedHit = true;
             if (e.T.ranged) {
               this._fireProjectile(e, player);
@@ -160,27 +144,27 @@ export class EnemyManager {
               player.damage(e.T.dmg, null, sfx, this.hooks.hud);
             }
           }
-          if (e.t >= e.dieClipDur + 0.1) {
+          if (e.t >= e.atkDur + 0.12) {
             e.cdT = rand(e.T.cd[0], e.T.cd[1]);
             e.state = 'chase';
-            this.playAnim(e, e.T.idle, 0.15);
-            if (e.T.ranged) this.playAnim(e, e.T.idle, 0.15);
           }
           break;
         }
         case 'dying': {
-          e.t += dt;
-          if (e.t >= e.dieClipDur) {
+          e.t += dt; e.animT += dt;
+          if (e.t >= e.T.dieDur) {
             this.fx.dissolve(e.pos, e.T.radius * 1.1, e.T.height);
             sfx.boneCrack();
             this._remove(i);
+            continue;
           }
           break;
         }
       }
+      poseMonster(e, dt, t);
     }
 
-    // --- снаряды некромантов ---
+    // --- снаряды ПЛОДОВ ---
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.vel.y -= 5.5 * dt;
@@ -302,7 +286,6 @@ export class EnemyManager {
   _remove(i) {
     const e = this.list[i];
     this.scene.remove(e.group);
-    e.mixer.stopAllAction();
     this.list.splice(i, 1);
   }
 
@@ -317,16 +300,14 @@ export class EnemyManager {
   }
 
   clear() {
-    for (const e of this.list) { this.scene.remove(e.group); e.mixer.stopAllAction(); }
+    for (const e of this.list) this.scene.remove(e.group);
     this.list.length = 0;
     for (const p of this.projectiles) this.scene.remove(p.mesh);
     this.projectiles.length = 0;
   }
 }
 
-// хуки урона на уровне менеджера: оборачиваем damage у каждого врага при спавне —
-// проще: патчим прототип объекта в spawn (см. spawn: e.damage определён ниже).
-// Реализация damage вынесена сюда, чтобы держать логику в одном месте.
+// урон: вспышка, кровь, гибс или анимация смерти
 export function attachEnemyDamage(e, mgr, hooks) {
   e.damage = function (amount, point, dir, head) {
     if (e.state === 'dead' || e.state === 'dying') return;
@@ -343,14 +324,11 @@ export function attachEnemyDamage(e, mgr, hooks) {
         mgr.sfx.gib();
         hooks.onKill(e, head, true);
         mgr.scene.remove(e.group);
-        e.mixer.stopAllAction();
         const i = mgr.list.indexOf(e);
         if (i >= 0) mgr.list.splice(i, 1);
       } else {
         e.state = 'dying';
-        e.t = 0;
-        mgr.playAnim(e, 'Death_A', 0.08, true);
-        e.dieClipDur = e.act['Death_A'] ? e.act['Death_A'].getClip().duration : 1.2;
+        e.t = 0; e.animT = 0; e.animDur = e.T.dieDur;
         mgr.sfx.gib();
         hooks.onKill(e, head, false);
       }
