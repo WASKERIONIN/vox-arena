@@ -24,10 +24,10 @@ export function buildArena(scene, T) {
     return mesh;
   };
 
-  // ---- свет ----
-  scene.add(new THREE.HemisphereLight(0xff9a70, 0x241a2a, 1.05));
-  scene.add(new THREE.AmbientLight(0x9a7068, 0.55));
-  const dir = new THREE.DirectionalLight(0xffd0b0, 1.55);
+  // ---- свет (хоррор-атмосфера: контрастные тени и глубокие тона) ----
+  scene.add(new THREE.HemisphereLight(0x5a4850, 0x120c16, 0.65));
+  scene.add(new THREE.AmbientLight(0x32242a, 0.4));
+  const dir = new THREE.DirectionalLight(0xb88870, 0.85);
   dir.position.set(24, 38, 14);
   scene.add(dir);
 

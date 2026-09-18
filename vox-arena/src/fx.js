@@ -130,6 +130,33 @@ export class FX {
       this.bloodFloor(p.x + rand(-0.3, 0.3), p.z + rand(-0.3, 0.3), rand(0.5, 0.95));
     }
   }
+  bloodFountain(p, dir, n = 45, power = 2.2) {
+    // мощный фонтан крови из культи/шеи
+    n = Math.round(n * this.budget);
+    const cols = [this._c(0xe81818), this._c(0xc81410), this._c(0x9e1210), this._c(0x5a0808)];
+    for (let i = 0; i < n; i++) {
+      this.voxel(
+        p.x + rand(-0.06, 0.06), p.y + rand(-0.04, 0.04), p.z + rand(-0.06, 0.06),
+        dir.x * rand(1.5, 5.0) * power + rand(-1.8, 1.8),
+        Math.max(1.5, dir.y * rand(2.0, 6.0) * power + rand(1.0, 3.5)),
+        dir.z * rand(1.5, 5.0) * power + rand(-1.8, 1.8),
+        pick(cols), rand(0.045, 0.095), rand(1.4, 2.8), { bounce: 0.35, grav: 1.1 }
+      );
+    }
+    this.bloodFloor(p.x, p.z, rand(1.0, 1.6));
+  }
+  corpseBubble(p) {
+    // пузыри и сгустки крови из трупа перед детонацией
+    const cols = [this._c(0x8a0d0a), this._c(0xc81410), this._c(0x400505)];
+    const n = Math.round(4 * this.budget);
+    for (let i = 0; i < n; i++) {
+      this.voxel(
+        p.x + rand(-0.25, 0.25), p.y + rand(0.05, 0.3), p.z + rand(-0.25, 0.25),
+        rand(-0.6, 0.6), rand(0.8, 2.2), rand(-0.6, 0.6),
+        pick(cols), rand(0.04, 0.08), rand(0.6, 1.2), { bounce: 0.2, grav: 0.8 }
+      );
+    }
+  }
   gib(p, big = false) {
     const n = Math.round((big ? 90 : 60) * this.budget) + 10;
     const meat = [this._c(0xa11414), this._c(0x7d0f0a), this._c(0xd42a2a)];
@@ -196,6 +223,33 @@ export class FX {
     const spark = this._c(0xffd870);
     for (let i = 0; i < sp; i++)
       this.voxel(p.x, p.y, p.z, dir.x * rand(4, 9) + rand(-1.5, 1.5), rand(-0.5, 2), dir.z * rand(4, 9) + rand(-1.5, 1.5), spark, rand(0.02, 0.04), rand(0.12, 0.3), { grav: 0.6, bounce: 0 });
+  }
+  shotgunMuzzle(p, dir) {
+    // Сокрушительная вспышка дробовика: пламя, густой дым, веер искр
+    this.flash(p, 0xff9030, rand(0.45, 0.65), 0.09);
+    this.flash(_v3.copy(p).addScaledVector(dir, 0.15), 0xfff0a0, rand(0.3, 0.42), 0.06);
+    this._pulseLight(p, 160, 0xff8833);
+    this.smokePuff(_v3.copy(p).addScaledVector(dir, 0.35), 1.6, 0x605550, 0.5);
+    this.smokePuff(_v3.copy(p).addScaledVector(dir, 0.15), 1.1, 0x8a807a, 0.35);
+    const sp = Math.round(14 * this.budget);
+    const fire = [this._c(0xffd870), this._c(0xff7720), this._c(0xff2200)];
+    for (let i = 0; i < sp; i++) {
+      this.voxel(p.x, p.y, p.z,
+        dir.x * rand(6, 14) + rand(-3.5, 3.5), rand(-1, 3.5), dir.z * rand(6, 14) + rand(-3.5, 3.5),
+        pick(fire), rand(0.03, 0.065), rand(0.18, 0.45), { grav: 0.9, bounce: 0.2 });
+    }
+  }
+  shotgunCasing(p, rightDir) {
+    // Выброс стреляных ружейных гильз (красный пластик + латунный донец)
+    const red = this._c(0x991010);
+    const brass = this._c(0xd4a028);
+    for (let c = 0; c < 2; c++) {
+      const off = c === 0 ? -0.06 : 0.06;
+      const vx = rightDir.x * rand(1.6, 2.8) + rand(-0.4, 0.4);
+      const vz = rightDir.z * rand(1.6, 2.8) + rand(-0.4, 0.4);
+      this.voxel(p.x + off, p.y + 0.02, p.z + off, vx, rand(2.0, 3.2), vz, red, 0.046, rand(3.5, 5.5), { bounce: 0.55 });
+      this.voxel(p.x + off, p.y + 0.04, p.z + off, vx * 0.9, rand(1.8, 3.0), vz * 0.9, brass, 0.038, rand(3.5, 5.5), { bounce: 0.55 });
+    }
   }
   casing(p, rightDir) {
     const brass = this._c(0xc9a227);

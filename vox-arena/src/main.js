@@ -6,7 +6,6 @@ import { AudioSys } from './audio.js';
 import { FX } from './fx.js';
 import { buildArena } from './arena.js';
 import { Player } from './player.js';
-import { buildRifle } from './weapon-model.js';
 import { EnemyManager } from './enemies.js';
 import { Waves } from './waves.js';
 import { HUD } from './hud.js';
@@ -29,7 +28,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(settings.fov, 1, 0.08, 500);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
-const fogObj = new THREE.Fog(0x140609, 12, 95);
+const fogObj = new THREE.Fog(0x12080a, 8, 85);
 scene.fog = settings.fog ? fogObj : null;
 
 const T = makeTextures();
@@ -40,7 +39,7 @@ fx.setCamera(camera);
 const enemies = new EnemyManager(scene, T, fx, sfx, {
   onKill: null, hud: null, // заполняется ниже
 });
-const player = new Player(camera, buildRifle());
+const player = new Player(camera);
 
 // ============================== состояние игры ==============================
 let state = 'loading'; // loading | menu | playing | paused | dead
@@ -87,9 +86,9 @@ function onKill(e, head, gibbed) {
 enemies.hooks.onKill = onKill;
 
 player.onShoot = () => { shotsFired++; };
-player.onHit = ({ head, killed }) => {
+player.onHit = ({ head, killed, hitZone, isCorpse }) => {
   shotsHit++;
-  if (killed) return; // хитмаркер уже показан в onKill
+  if (killed || isCorpse) return;
   hud.hitmarker(false);
   if (head) { stylePts += 25; hud.styleEvent('ХЕДШОТ +25'); sfx.headshot(); headshots++; }
   else stylePts += 6;
@@ -102,7 +101,7 @@ player.onDead = () => {
   document.exitPointerLock && document.exitPointerLock();
   sfx.stopMusic();
   sfx.gib();
-  // гибс не в камеру: в 1.6м перед игроком
+  // гибс перед игроком
   const gpos = player.pos.clone();
   gpos.x += -Math.sin(player.yaw) * 1.6;
   gpos.z += -Math.cos(player.yaw) * 1.6;
@@ -123,15 +122,15 @@ const waves = new Waves(enemies, arena, {
   countdown: (t, next) => hud.countdown(t, next),
   portal: (x, z) => { fx.portal(new THREE.Vector3(x, 0, z)); },
   waveClear: n => {
-    hud.banner('ВОЛНА ' + n + ' ЗАЧИЩЕНА', 'ВОССТАНОВЛЕНО +15 БРОНИ · СТИЛЬ +150');
-    player.heal(15); stylePts += 150; sfx.waveClear();
+    hud.banner('ВОЛНА ' + n + ' ЗАЧИЩЕНА', 'ВОССТАНОВЛЕНО +20 БРОНИ · СТИЛЬ +150');
+    player.heal(20); stylePts += 150; sfx.waveClear();
   },
 });
 
-function onPickup() { player.heal(30); sfx.pickup(); hud.styleEvent('+30 БРОНЕПЛАСТИНЫ'); }
+function onPickup() { player.heal(35); sfx.pickup(); hud.styleEvent('+35 БРОНЕПЛАСТИНЫ'); }
 
 // ============================== ввод ==============================
-const input = { keys: new Set(), fire: false, reload: false, jump: false, lookDX: 0, lookDY: 0 };
+const input = { keys: new Set(), fire: false, fireOnce: false, kick: false, reload: false, jump: false, lookDX: 0, lookDY: 0 };
 const SENS = 0.0021;
 
 function look(dx, dy) {
@@ -148,7 +147,7 @@ function enableFallback() {
   if (fallbackLook) return;
   fallbackLook = true;
   hud.fallback('Захват мыши недоступен в этом окне — обзор мышью по экрану или стрелками ←→↑↓. Для полного захвата скачайте файл и откройте локально.');
-  hud.hint('ЛКМ — огонь · R — перезарядка · SHIFT — бег · ПРОБЕЛ — прыжок · ESC — пауза');
+  hud.hint('ЛКМ — огонь · 1/2/КОЛЕСО — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка');
 }
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
@@ -160,25 +159,50 @@ document.addEventListener('mousemove', e => {
   if (state !== 'playing') return;
   if (locked || (fallbackLook && e.buttons >= 0)) look(e.movementX || 0, e.movementY || 0);
 });
+
 canvas.addEventListener('mousedown', e => {
   if (state !== 'playing') return;
   if (!locked && !fallbackLook) tryLock();
-  if (e.button === 0) input.fire = true;
+  if (e.button === 0) {
+    input.fire = true;
+    input.fireOnce = true;
+  } else if (e.button === 2) {
+    input.kick = true;
+  }
 });
-window.addEventListener('mouseup', e => { if (e.button === 0) input.fire = false; });
+
+window.addEventListener('mouseup', e => {
+  if (e.button === 0) input.fire = false;
+  if (e.button === 2) input.kick = false;
+});
+
+window.addEventListener('wheel', e => {
+  if (state !== 'playing') return;
+  if (e.deltaY > 0) {
+    player.switchWeapon(1, sfx, hud);
+  } else if (e.deltaY < 0) {
+    player.switchWeapon(0, sfx, hud);
+  }
+}, { passive: true });
+
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 window.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   input.keys.add(e.code);
   if (e.code === 'KeyR') input.reload = true;
   if (e.code === 'Space') input.jump = true;
+  if (e.code === 'KeyF' || e.code === 'KeyV') input.kick = true;
   if (e.code === 'Escape' && fallbackLook) {
     if (state === 'playing') pauseGame(); else if (state === 'paused') resumeGame();
   }
 });
-window.addEventListener('keyup', e => input.keys.delete(e.code));
-window.addEventListener('blur', () => { input.keys.clear(); input.fire = false; });
+window.addEventListener('keyup', e => {
+  input.keys.delete(e.code);
+  if (e.code === 'KeyF' || e.code === 'KeyV') input.kick = false;
+});
+window.addEventListener('blur', () => { input.keys.clear(); input.fire = false; input.kick = false; });
 
 // ============================== переходы состояний ==============================
 function startRun() {
@@ -193,19 +217,21 @@ function startRun() {
   hud.noScreen(); hud.showGame(true);
   hud.fadeFromBlack();
   hud.setHP(player.hp, player.maxHp);
-  hud.setAmmo(player.mag, player.magSize, false);
+  hud.setAmmo(player.mag, player.magSize, false, player.curSlot === 1);
+  hud.setWeaponSlot(player.curSlot);
+  hud.setFlashlight(player.flashlightOn);
   hud.setKills(0); hud.setScore(0); hud.setStyle(0);
   hud.setWave(0);
   hud.hint(fallbackLook
-    ? 'ЛКМ — огонь · МЫШЬ/СТРЕЛКИ — обзор · R — перезарядка'
-    : 'ЛКМ — огонь · R — перезарядка · SHIFT — бег · ПРОБЕЛ — прыжок · ESC — пауза');
-  player.gun.visible = true;
+    ? 'ЛКМ — огонь · 1/2 — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка'
+    : 'ЛКМ — огонь · 1/2/КОЛЕСО — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка');
+  player.rifleAssets.group.visible = true;
   state = 'playing';
   tryLock();
 }
 function pauseGame() {
   if (state !== 'playing') return;
-  state = 'paused'; input.fire = false;
+  state = 'paused'; input.fire = false; input.kick = false;
   hud.screen('pause');
 }
 function resumeGame() {
@@ -214,10 +240,12 @@ function resumeGame() {
   if (!fallbackLook) tryLock();
 }
 function quitToMenu() {
-  state = 'menu'; input.fire = false;
+  state = 'menu'; input.fire = false; input.kick = false;
   hud.showGame(false); hud.screen('menu');
   enemies.clear(); fx.clear(); waves.state = 'idle'; hud.countdown(0, 0);
-  player.gun.visible = false;
+  player.rifleAssets.group.visible = false;
+  player.shotgunAssets.group.visible = false;
+  player.kickLeg.visible = false;
   document.exitPointerLock && document.exitPointerLock();
 }
 hud.onPlay = startRun;
@@ -226,10 +254,12 @@ hud.onQuit = quitToMenu;
 hud.onRestart = startRun;
 hud.onSettingsClose = () => { if (state === 'paused') hud.screen('pause'); else hud.screen('menu'); };
 
-// ============================== запуск (модели процедурные) ==============================
+// ============================== запуск ==============================
 function boot() {
   applyFns.all();
-  player.gun.visible = false;
+  player.rifleAssets.group.visible = false;
+  player.shotgunAssets.group.visible = false;
+  player.kickLeg.visible = false;
   state = 'menu';
   hud.screen('menu');
   window.__VOX__.ready = true;
@@ -259,26 +289,29 @@ function frame(now) {
     waves.update(dt);
     arena.updatePickups(dt, time, player.pos, onPickup);
     fx.update(dt);
+    hud.updateBlood(dt);
     stylePts = Math.max(0, stylePts - 55 * dt);
     hud.setHP(player.hp, player.maxHp);
-    hud.setAmmo(player.mag, player.magSize, player.reloading);
+    hud.setAmmo(player.mag, player.magSize, player.reloading, player.curSlot === 1);
     hud.setStyle(stylePts);
   } else if (state === 'menu') {
     const a = time * 0.1;
     camera.position.set(Math.cos(a) * 23, 8.5 + Math.sin(a * 0.6) * 1.5, Math.sin(a) * 23);
     camera.lookAt(0, 1.6, 0);
     fx.update(dt);
+    hud.updateBlood(dt);
   } else if (state === 'dead') {
     deathT += dt;
-    // падение камеры на землю
     const fall = Math.min(1, deathT * 1.8);
     const eye = player.eyeH * (1 - fall) + 0.35 * fall;
     camera.rotation.z = fall * 0.55;
     camera.position.set(player.pos.x, player.pos.y + eye, player.pos.z);
     fx.update(dt);
-    enemies.update(dt * 0.25, player, arena); // враги «доигрывают» в слоумо
+    hud.updateBlood(dt);
+    enemies.update(dt * 0.25, player, arena);
   } else {
     fx.update(dt * 0.5);
+    hud.updateBlood(dt);
   }
 
   ps1.render(scene, camera);
@@ -300,7 +333,6 @@ window.__VOX__ = {
   gfx: applyFns,
   start: () => startRun(),
   spawn: (typeName = 'minion', dx = 0, dz = -6) => {
-    // спавн врага в КСЗ-системе игрока (вперёд = -Z)
     const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
     const wx = player.pos.x + dx * c - dz * s;
     const wz = player.pos.z + dx * s + dz * c;

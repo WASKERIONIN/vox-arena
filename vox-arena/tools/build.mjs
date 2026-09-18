@@ -23,5 +23,12 @@ const html = tpl.replace('/*__BUNDLE__*/', () => bundle);
 fs.mkdirSync(path.join(root, 'release'), { recursive: true });
 fs.writeFileSync(path.join(root, 'release', 'index.html'), html);
 
+// Обновляем также корневой билд и корневой index.html для удобства превью
+const topRoot = path.resolve(root, '..');
+try {
+  fs.writeFileSync(path.join(topRoot, 'ВОКСЕЛЬНАЯ_БОЙНЯ_build.html'), html);
+  fs.writeFileSync(path.join(topRoot, 'index.html'), html);
+} catch (e) {}
+
 const mb = (fs.statSync(path.join(root, 'release', 'index.html')).size / 1024 / 1024).toFixed(2);
 console.log(`release/index.html готов: ${mb} MB`);

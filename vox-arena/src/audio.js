@@ -61,6 +61,38 @@ export class AudioSys {
     this._tone('sawtooth', 700, 120, 0.05, 0.18);
     this._tone('square', 2400, 2000, 0.02, 0.05, 0.06); // щелчок гильзы
   }
+  shotgun() {
+    // Сокрушительный грохочущий выстрел дуплета
+    this._noise(0.32, { freq: 3200, q: 0.6, gain: 1.2, sweepTo: 80, type: 'lowpass' });
+    this._noise(0.12, { freq: 6500, q: 1.5, gain: 0.8 });
+    this._tone('sine', 180, 28, 0.35, 1.0);
+    this._tone('sawtooth', 550, 45, 0.22, 0.6);
+    this._noise(0.45, { freq: 450, gain: 0.4, sweepTo: 40, type: 'lowpass', at: 0.04 });
+  }
+  shotgunReload() {
+    // Перелом стволов + выброс гильз + вставка патронов + захлопывание
+    this._tone('square', 1200, 600, 0.06, 0.25, 0); // щелчок отпирания
+    this._noise(0.08, { freq: 1600, gain: 0.35, at: 0.05 });
+    this._tone('sine', 850, 1100, 0.04, 0.2, 0.35); // выброс гильзы 1
+    this._tone('sine', 950, 1200, 0.04, 0.2, 0.42); // выброс гильзы 2
+    this._noise(0.08, { freq: 2200, gain: 0.4, at: 0.85 }); // вставка патронов
+    this._tone('square', 500, 900, 0.05, 0.3, 0.9);
+    this._tone('square', 1400, 400, 0.08, 0.45, 1.25); // захлопывание
+    this._noise(0.12, { freq: 800, gain: 0.5, at: 1.25, sweepTo: 100 });
+  }
+  weaponSwitch() {
+    // Лязг металла и затвора при смене оружия
+    this._tone('square', 800, 400, 0.05, 0.2, 0);
+    this._noise(0.08, { freq: 2400, gain: 0.3, at: 0.04 });
+    this._tone('triangle', 600, 900, 0.06, 0.25, 0.12);
+  }
+  kick() {
+    // Свист рассекаемого воздуха + сокрушительный удар ботинком
+    this._noise(0.14, { freq: 800, gain: 0.4, sweepTo: 200, type: 'bandpass' });
+    this._noise(0.22, { freq: 350, q: 1.4, gain: 0.9, sweepTo: 50, type: 'lowpass', at: 0.08 });
+    this._tone('sine', 140, 35, 0.25, 0.8, 0.08);
+    this._tone('sawtooth', 320, 80, 0.12, 0.4, 0.08);
+  }
   dry() { this._tone('square', 1800, 1400, 0.03, 0.12); }
   reload() {
     this._tone('square', 900, 500, 0.04, 0.14, 0);
@@ -77,11 +109,26 @@ export class AudioSys {
   }
   boneCrack() { this._noise(0.08, { freq: 2600, q: 3, gain: 0.4 }); this._tone('triangle', 400, 90, 0.07, 0.3); }
   limbSever() {
-    // мокрый отрыв + тяжёлый глухой удар
-    this._noise(0.3, { freq: 1000, q: 0.7, gain: 0.85, sweepTo: 110, type: 'lowpass' });
-    this._tone('sine', 120, 36, 0.24, 0.65);
-    this._noise(0.14, { freq: 2400, q: 1.5, gain: 0.35, at: 0.02, sweepTo: 480 });
-    this._tone('sine', 70, 26, 0.4, 0.4, 0.16);
+    // сочный мокрый отрыв плоти + хруст кости + глухой удар
+    this._noise(0.28, { freq: 1200, q: 0.8, gain: 0.9, sweepTo: 120, type: 'lowpass' });
+    this._tone('sawtooth', 280, 50, 0.2, 0.5);
+    this._noise(0.14, { freq: 2800, q: 2.2, gain: 0.45, at: 0.02, sweepTo: 400 });
+    this._tone('sine', 95, 30, 0.35, 0.65, 0.05);
+  }
+  thud() {
+    // глухой удар тела об пол при падении
+    this._noise(0.18, { freq: 350, q: 1.2, gain: 0.75, sweepTo: 60, type: 'lowpass' });
+    this._tone('sine', 110, 32, 0.22, 0.7);
+  }
+  corpseBoil() {
+    // бурление / бульканье трупа перед взрывом
+    this._noise(0.15, { freq: 1800, q: 4.5, gain: 0.35, sweepTo: 600, type: 'bandpass' });
+    this._tone('sine', 380, 180, 0.08, 0.22);
+  }
+  monsterGetup() {
+    // злобный сиплый рык при подъёме на ноги
+    this._tone('sawtooth', 75, 140, 0.45, 0.35);
+    this._noise(0.4, { freq: 450, gain: 0.28, sweepTo: 180, type: 'lowpass' });
   }
   hurt() { this._tone('sawtooth', 240, 80, 0.16, 0.4); this._noise(0.12, { freq: 400, gain: 0.35, type: 'lowpass' }); }
   pickup() { this._tone('sine', 620, 620, 0.07, 0.3); this._tone('sine', 930, 930, 0.12, 0.3, 0.07); }

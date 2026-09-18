@@ -13,6 +13,7 @@
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
     font-family:'Segoe UI',Arial,sans-serif;color:var(--bone);}
   #game-canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;cursor:crosshair;}
+  #blood-canvas{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:7;image-rendering:pixelated;}
   .hidden{display:none !important;}
 
   /* ---------- HUD ---------- */
@@ -44,11 +45,17 @@
   #hp-num{font-size:26px;font-weight:900;color:#fff;text-shadow:0 0 6px rgba(255,40,20,.8),1px 1px 0 #000;min-width:52px;}
 
   #bottom-right{position:absolute;right:22px;bottom:18px;text-align:right;}
-  #weapon-name{font-size:11px;letter-spacing:2px;color:#c9b8a0;text-shadow:0 1px 0 #000;margin-bottom:2px;}
+  #weapon-slots{display:flex;justify-content:flex-end;gap:8px;margin-bottom:4px;}
+  .w-slot{font-size:11px;letter-spacing:1px;color:#887766;background:rgba(0,0,0,.6);border:1px solid #3d1b14;padding:2px 8px;border-radius:2px;}
+  .w-slot.active{color:#fff;background:rgba(180,24,18,.35);border-color:var(--red);box-shadow:0 0 8px rgba(255,36,24,.4);}
+  #weapon-name{font-size:12px;letter-spacing:2px;font-weight:700;color:#e8ddc8;text-shadow:0 1px 0 #000;margin-bottom:2px;}
   #ammo-row{display:flex;align-items:baseline;justify-content:flex-end;gap:6px;}
   #ammo-num{font-size:44px;font-weight:900;color:#fff;text-shadow:0 0 8px rgba(255,176,58,.55),2px 2px 0 #000;line-height:1;}
   #ammo-mag{font-size:18px;color:#c9b8a0;text-shadow:1px 1px 0 #000;}
   #reload-note{font-size:12px;letter-spacing:2px;color:var(--amber);height:14px;text-shadow:1px 1px 0 #000;}
+  #weapon-subinfo{font-size:11px;color:#a89985;margin-top:2px;letter-spacing:1px;}
+  #flashlight-status{color:#77ff88;}
+  #flashlight-status.off{color:#888;}
 
   #top-left{position:absolute;left:22px;top:18px;text-shadow:1px 1px 0 #000;}
   #wave-label{font-size:20px;font-weight:800;letter-spacing:2px;color:#fff;}
@@ -75,7 +82,7 @@
   #fps{position:absolute;right:8px;top:6px;font-size:11px;color:#7f7;padding:2px 6px;background:rgba(0,0,0,.4);}
 
   #damage-flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 40%,rgba(255,10,5,.55) 100%);opacity:0;transition:opacity .35s;z-index:6;}
-  #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(0,0,0,.5) 100%);z-index:4;}
+  #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 50%,rgba(0,0,0,.65) 100%);z-index:4;}
   #lowhp{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,0,0,0) 55%,rgba(255,0,0,.28) 100%);opacity:0;z-index:4;}
 
   /* ---------- Экраны ---------- */
@@ -96,7 +103,7 @@
   .footnote{position:absolute;bottom:16px;font-size:11px;letter-spacing:1px;color:rgba(201,184,160,.5);}
 
   /* ---------- Настройки ---------- */
-  #settings .panel, #help .panel{width:min(680px,92vw);max-height:86vh;overflow:auto;border:1px solid var(--line);
+  #settings .panel, #help .panel{width:min(720px,92vw);max-height:86vh;overflow:auto;border:1px solid var(--line);
     background:var(--panel);padding:22px 26px;pointer-events:auto;}
   .panel h2{margin:0 0 16px;font-size:20px;letter-spacing:4px;color:#fff;border-bottom:1px solid var(--line);padding-bottom:10px;}
   .set-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px dotted rgba(107,32,21,.35);}
@@ -124,6 +131,7 @@
 </head>
 <body>
 <canvas id="game-canvas"></canvas>
+<canvas id="blood-canvas"></canvas>
 
 <div id="hud" class="hidden">
   <div id="crosshair"><span class="l t"></span><span class="l b"></span><span class="l lf"></span><span class="l rt"></span><span class="dot"></span></div>
@@ -151,9 +159,14 @@
   </div>
 
   <div id="bottom-right">
-    <div id="weapon-name">ШТУРМОВОЙ МОДУЛЬ «СЕКТОР-9» · 6.8 ММ</div>
+    <div id="weapon-slots">
+      <span id="slot-1" class="w-slot active"><kbd>1</kbd> «СЕКТОР-9»</span>
+      <span id="slot-2" class="w-slot"><kbd>2</kbd> «ПАЛАЧ»</span>
+    </div>
+    <div id="weapon-name">ШТУРМОВОЙ АВТОМАТ «СЕКТОР-9» · 6.8 ММ</div>
     <div id="ammo-row"><span id="ammo-num" class="mono">30</span><span id="ammo-mag" class="mono">/ ∞</span></div>
     <div id="reload-note"></div>
+    <div id="weapon-subinfo"><span id="flashlight-status"><kbd>T</kbd> ФОНАРЬ: ВКЛ</span> · <span><kbd>F</kbd>/<kbd>ПКМ</kbd> ПИНОК</span></div>
   </div>
 
   <div id="banner"><div id="banner-main"></div><div id="banner-sub"></div></div>
@@ -203,21 +216,21 @@
 
 <div id="help" class="screen overlay hidden">
   <div class="panel">
-    <h2>УПРАВЛЕНИЕ</h2>
+    <h2>УПРАВЛЕНИЕ И МЕХАНИКИ</h2>
     <div class="help-cols">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — движение</div>
-      <div><kbd>МЫШЬ</kbd> — обзор</div>
-      <div><kbd>ЛКМ</kbd> — огонь</div>
+      <div><kbd>МЫШЬ</kbd> — прицеливание</div>
+      <div><kbd>ЛКМ</kbd> — огонь / выстрел</div>
+      <div><kbd>1</kbd> / <kbd>2</kbd> / <kbd>Q</kbd> / <kbd>КОЛЕСО</kbd> — смена оружия</div>
+      <div><kbd>F</kbd> / <kbd>ПКМ</kbd> / <kbd>V</kbd> — боевой пинок (нога)</div>
+      <div><kbd>T</kbd> / <kbd>L</kbd> — тактический фонарь</div>
       <div><kbd>R</kbd> — перезарядка</div>
-      <div><kbd>SHIFT</kbd> — спринт</div>
-      <div><kbd>ПРОБЕЛ</kbd> — прыжок</div>
-      <div><kbd>←</kbd><kbd>→</kbd> — поворот (резерв)</div>
-      <div><kbd>ESC</kbd> — пауза</div>
+      <div><kbd>SHIFT</kbd> — спринт · <kbd>ПРОБЕЛ</kbd> — прыжок</div>
     </div>
-    <p style="font-size:13px;line-height:1.7;color:#c9b8a0">
-      Хедшот (верхняя часть черепа) наносит ×2.6 урона и мгновенно хоронит мелких.
-      Подбирайте красные аптечки. Стиль растёт за убийства и падает со временем — держите темп.
-      Маги кидают плазму: стрейфьтесь. Громила ломает щитом — не подходите в упор.
+    <p style="font-size:13px;line-height:1.7;color:#c9b8a0;margin-top:14px">
+      <b>ОБРЕЗ «ПАЛАЧ»:</b> Выпускает смертоносный веер картечи. В упор сбивает с ног и отрывает конечности. Переломная перезарядка.<br>
+      <b>БОЕВОЙ ПИНОК:</b> Опрокидывает монстров на пол, прерывает атаки и швыряет отстреленные черепа и лапы как снаряды.<br>
+      <b>АГОНИЯ ОБЕЗГЛАВЛЕННОГО:</b> Обезглавленные монстры могут судорожно бежать вперед, фонтанируя кровью — добивайте их выстрелом или пинком!
     </p>
     <div style="margin-top:14px"><button class="btn small" id="btn-help-close">НАЗАД</button></div>
   </div>

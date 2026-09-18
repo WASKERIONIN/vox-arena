@@ -15,6 +15,7 @@ export class HUD {
   constructor(settings, applyFns) {
     this.els = {};
     for (const id of ['hud', 'crosshair', 'hitmarker', 'hp-bar-fill', 'hp-num', 'ammo-num', 'ammo-mag',
+      'weapon-name', 'slot-1', 'slot-2', 'flashlight-status',
       'reload-note', 'wave-label', 'kills-label', 'score-label', 'style-rank', 'style-bar-fill',
       'style-event', 'banner', 'banner-main', 'banner-sub', 'countdown', 'hint', 'fps',
       'damage-flash', 'lowhp', 'vignette', 'menu', 'settings', 'help', 'pause', 'death',
@@ -22,11 +23,240 @@ export class HUD {
     this.settings = settings;
     this.applyFns = applyFns;
     this._bannerT = null; this._hmT = null; this._eventT = null;
+
+    // Высококачественная система органических PS1-брызг крови на экран
+    this.bloodCanvas = $('blood-canvas');
+    this.bloodCtx = this.bloodCanvas ? this.bloodCanvas.getContext('2d') : null;
+    this.splatters = [];
+    this._initBloodCanvas();
+
     this._buildSettings();
     this._bind();
   }
 
-  // принудительная очистка вспышек/оверлеев (защита от «пелены»)
+  _initBloodCanvas() {
+    if (!this.bloodCanvas) return;
+    const resize = () => {
+      // Пикселизированное ретро-разрешение для аутентичного PS1-стиля
+      const aspect = window.innerWidth / (window.innerHeight || 1);
+      this.bloodCanvas.width = Math.floor(320 * (aspect / 1.77));
+      this.bloodCanvas.height = 240;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+  }
+
+  // Генерация органического многослойного кровавого пятна
+  _createSplatter(x, y, baseRadius, type = 'splotch') {
+    const numPts = Math.floor(10 + Math.random() * 8);
+    const pts = [];
+    for (let i = 0; i < numPts; i++) {
+      const a = (i / numPts) * Math.PI * 2;
+      // Неровные органические выступы и шипы брызг
+      const spike = Math.random() < 0.35 ? (1.5 + Math.random() * 1.3) : (0.6 + Math.random() * 0.55);
+      const r = baseRadius * spike;
+      pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+
+    // Сателлитные капли (мелкие брызги вокруг эпицентра)
+    const satellites = [];
+    const numSats = Math.floor(4 + Math.random() * 8);
+    for (let i = 0; i < numSats; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = baseRadius * (1.2 + Math.random() * 2.2);
+      satellites.push({
+        x: Math.cos(a) * d,
+        y: Math.sin(a) * d,
+        r: Math.max(1.2, baseRadius * (0.08 + Math.random() * 0.18)),
+      });
+    }
+
+    // Гравитационные струйки крови, стекающие вниз
+    const drips = [];
+    if (Math.random() < 0.65 || baseRadius > 16) {
+      const numDrips = Math.random() < 0.4 ? 2 : 1;
+      for (let d = 0; d < numDrips; d++) {
+        drips.push({
+          xOff: (Math.random() - 0.5) * baseRadius * 0.8,
+          targetLen: baseRadius * (1.5 + Math.random() * 3.5),
+          curLen: 0,
+          speed: 18 + Math.random() * 26,
+          width: Math.max(1.5, baseRadius * (0.14 + Math.random() * 0.12)),
+          wobble: Math.random() * 10,
+        });
+      }
+    }
+
+    return {
+      x, y, baseRadius, pts, satellites, drips,
+      type,
+      alpha: 0.92 + Math.random() * 0.08,
+      life: 3.2 + Math.random() * 1.6,
+      maxLife: 4.8,
+    };
+  }
+
+  // Добавление сочных брызг на экран
+  addScreenBlood(intensity = 1.0, normX = null, normY = null) {
+    if (!this.bloodCtx || !this.bloodCanvas) return;
+    const w = this.bloodCanvas.width, h = this.bloodCanvas.height;
+
+    const cx = normX !== null ? normX * w : (w * 0.5 + (Math.random() - 0.5) * w * 0.65);
+    const cy = normY !== null ? normY * h : (h * 0.5 + (Math.random() - 0.5) * h * 0.65);
+
+    const count = Math.floor((3 + Math.random() * 4) * intensity);
+    for (let i = 0; i < count; i++) {
+      const ox = cx + (Math.random() - 0.5) * w * 0.35 * (i > 0 ? 1 : 0.2);
+      const oy = cy + (Math.random() - 0.5) * h * 0.35 * (i > 0 ? 1 : 0.2);
+      const rad = (i === 0 ? (16 + Math.random() * 18) : (6 + Math.random() * 12)) * (0.8 + intensity * 0.4);
+      this.splatters.push(this._createSplatter(ox, oy, rad));
+    }
+
+    // Ограничиваем количество одновременных пятен для производительности
+    if (this.splatters.length > 28) {
+      this.splatters.splice(0, this.splatters.length - 28);
+    }
+  }
+
+  updateBlood(dt) {
+    if (!this.bloodCtx || !this.bloodCanvas || this.splatters.length === 0) return;
+    const ctx = this.bloodCtx;
+    ctx.clearRect(0, 0, this.bloodCanvas.width, this.bloodCanvas.height);
+
+    for (let i = this.splatters.length - 1; i >= 0; i--) {
+      const s = this.splatters[i];
+      s.life -= dt;
+      if (s.life <= 0) {
+        this.splatters.splice(i, 1);
+        continue;
+      }
+
+      // Стекание струек
+      for (const dr of s.drips) {
+        if (dr.curLen < dr.targetLen) {
+          dr.curLen = Math.min(dr.targetLen, dr.curLen + dr.speed * dt);
+        }
+      }
+
+      const fade = Math.min(1, s.life / 0.9);
+      const curAlpha = s.alpha * fade;
+
+      // ======================================================================
+      // 1. Тёмный запекшийся кровавый контур (Dark Coagulated Rim)
+      // ======================================================================
+      ctx.save();
+      ctx.translate(s.x, s.y);
+
+      // Струйки крови (тёмный подслой)
+      for (const dr of s.drips) {
+        if (dr.curLen > 1) {
+          ctx.beginPath();
+          ctx.lineWidth = dr.width + 1.2;
+          ctx.strokeStyle = `rgba(32, 2, 2, ${curAlpha * 0.95})`;
+          ctx.moveTo(dr.xOff, 0);
+          const midY = dr.curLen * 0.5;
+          const wobbleX = Math.sin(dr.wobble + dr.curLen * 0.1) * 2;
+          ctx.quadraticCurveTo(dr.xOff + wobbleX, midY, dr.xOff, dr.curLen);
+          ctx.stroke();
+
+          // Капля на конце струи
+          ctx.beginPath();
+          ctx.fillStyle = `rgba(32, 2, 2, ${curAlpha * 0.95})`;
+          ctx.arc(dr.xOff, dr.curLen, dr.width * 1.35, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Основное неровное тело кляксы
+      ctx.beginPath();
+      for (let p = 0; p < s.pts.length; p++) {
+        const pt = s.pts[p];
+        if (p === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(38, 3, 3, ${curAlpha * 0.95})`;
+      ctx.fill();
+
+      // Сателлитные брызги (тёмный слой)
+      for (const sat of s.satellites) {
+        ctx.beginPath();
+        ctx.arc(sat.x, sat.y, sat.r + 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(38, 3, 3, ${curAlpha * 0.95})`;
+        ctx.fill();
+      }
+
+      // ======================================================================
+      // 2. Густая артериальная плоть крови (Rich Crimson Core)
+      // ======================================================================
+      for (const dr of s.drips) {
+        if (dr.curLen > 1) {
+          ctx.beginPath();
+          ctx.lineWidth = dr.width;
+          ctx.strokeStyle = `rgba(138, 10, 8, ${curAlpha})`;
+          ctx.moveTo(dr.xOff, 0);
+          const midY = dr.curLen * 0.5;
+          const wobbleX = Math.sin(dr.wobble + dr.curLen * 0.1) * 2;
+          ctx.quadraticCurveTo(dr.xOff + wobbleX, midY, dr.xOff, dr.curLen);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.fillStyle = `rgba(138, 10, 8, ${curAlpha})`;
+          ctx.arc(dr.xOff, dr.curLen, dr.width * 1.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.beginPath();
+      for (let p = 0; p < s.pts.length; p++) {
+        const pt = s.pts[p];
+        const sc = 0.82;
+        if (p === 0) ctx.moveTo(pt.x * sc, pt.y * sc);
+        else ctx.lineTo(pt.x * sc, pt.y * sc);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(152, 14, 12, ${curAlpha})`;
+      ctx.fill();
+
+      for (const sat of s.satellites) {
+        ctx.beginPath();
+        ctx.arc(sat.x, sat.y, sat.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(152, 14, 12, ${curAlpha})`;
+        ctx.fill();
+      }
+
+      // ======================================================================
+      // 3. Свежие мокрые блики (Glossy Highlights)
+      // ======================================================================
+      ctx.beginPath();
+      for (let p = 0; p < s.pts.length; p += 2) {
+        const pt = s.pts[p];
+        const sc = 0.45;
+        if (p === 0) ctx.moveTo(pt.x * sc, pt.y * sc);
+        else ctx.lineTo(pt.x * sc, pt.y * sc);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(215, 45, 35, ${curAlpha * 0.75})`;
+      ctx.fill();
+
+      // Маленькая белесая влажная точка на верхнем крае
+      ctx.beginPath();
+      ctx.arc(-s.baseRadius * 0.22, -s.baseRadius * 0.22, Math.max(1, s.baseRadius * 0.12), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 160, 150, ${curAlpha * 0.6})`;
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  clearBlood() {
+    this.splatters.length = 0;
+    if (this.bloodCtx && this.bloodCanvas) {
+      this.bloodCtx.clearRect(0, 0, this.bloodCanvas.width, this.bloodCanvas.height);
+    }
+  }
+
+  // принудительная очистка вспышек/оверлеев
   forceClearOverlays() {
     const d = this.els['damage-flash'];
     d.style.transition = 'none'; d.style.opacity = '0';
@@ -34,8 +264,9 @@ export class HUD {
     this.els.hitmarker.classList.remove('show');
     this.els.countdown.textContent = '';
     this.els.banner.classList.remove('show');
+    this.clearBlood();
   }
-  // чёрный фейд: при смерти накрываем экран, при старте убираем
+
   fadeToBlack() {
     const f = this.els.fade;
     if (!f) return;
@@ -151,16 +382,32 @@ export class HUD {
   showGame(on) {
     this.els.hud.classList.toggle('hidden', !on);
     this.els.vignette.classList.toggle('hidden', !on);
+    if (!on) this.clearBlood();
   }
   setHP(hp, max) {
     this.els['hp-bar-fill'].style.width = (100 * hp / max) + '%';
     this.els['hp-num'].textContent = Math.ceil(hp);
     this.els['lowhp'].style.opacity = hp < 35 ? (0.5 + 0.5 * Math.sin(performance.now() / 180)) * (1 - hp / 35) : 0;
   }
-  setAmmo(n, size, reloading) {
+  setAmmo(n, size, reloading, isShotgun = false) {
     this.els['ammo-num'].textContent = n;
-    this.els['ammo-mag'].textContent = '/ ∞';
+    this.els['ammo-mag'].textContent = '/ ' + (isShotgun ? '2' : '30');
     this.els['reload-note'].textContent = reloading ? 'ПЕРЕЗАРЯДКА…' : (n === 0 ? 'R — ПЕРЕЗАРЯДКА' : '');
+  }
+  setWeaponSlot(slotIndex) {
+    if (this.els['slot-1']) this.els['slot-1'].classList.toggle('active', slotIndex === 0);
+    if (this.els['slot-2']) this.els['slot-2'].classList.toggle('active', slotIndex === 1);
+    if (this.els['weapon-name']) {
+      this.els['weapon-name'].textContent = slotIndex === 0
+        ? 'ШТУРМОВОЙ АВТОМАТ «СЕКТОР-9» · 6.8 ММ'
+        : 'ДВУСТВОЛЬНЫЙ ОБРЕЗ «ПАЛАЧ» · 12 КАЛИБР';
+    }
+  }
+  setFlashlight(isOn) {
+    if (this.els['flashlight-status']) {
+      this.els['flashlight-status'].innerHTML = `<kbd>T</kbd> ФОНАРЬ: ${isOn ? '<b style="color:#77ff88">ВКЛ</b>' : '<b style="color:#888">ВЫКЛ</b>'}`;
+      this.els['flashlight-status'].classList.toggle('off', !isOn);
+    }
   }
   setWave(n) { this.els['wave-label'].textContent = 'ВОЛНА ' + n; }
   setKills(n) { this.els['kills-label'].textContent = 'УБИТО: ' + n; }
