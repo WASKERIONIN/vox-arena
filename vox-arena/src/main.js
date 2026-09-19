@@ -458,6 +458,23 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-window.__VOX__.ready = true;
+window.__VOX__ = {
+  ready: false,
+  get state() { return state; },
+  gfx: applyFns,
+  start: (map = 'starship', mode = 'campaign') => startRun(map, mode),
+  startSandbox: (map = 'arena') => startRun(map, 'sandbox'),
+  spawn: (typeName = 'minion', dx = 0, dz = -6, aiDisabled = false) => {
+    const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
+    const wx = player.pos.x + dx * c - dz * s;
+    const wz = player.pos.z + dx * s + dz * c;
+    return enemies.spawn(typeName, wx, wz, 1, aiDisabled);
+  },
+  setMap: mapId => setMap(mapId),
+  toggleAI: () => toggleSandboxAI(),
+  enemies, player, waves, hud, fx, props,
+  killAll: () => enemies.killAllInstant(),
+};
+
 boot();
 requestAnimationFrame(frame);

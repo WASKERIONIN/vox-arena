@@ -28,7 +28,7 @@ export class AudioSys {
     if (this.sfx) this.sfx.gain.value = sfxV;
     if (this.music) this.music.gain.value = musV;
   }
-  _t() { return this.ctx.currentTime; }
+  _t() { return this.ctx ? this.ctx.currentTime : 0; }
   _noise(dur, { freq = 1000, q = 1, type = 'bandpass', gain = 1, sweepTo = null, at = 0 } = {}) {
     if (!this.ctx) return;
     const t = this._t() + at;
@@ -299,6 +299,7 @@ export class AudioSys {
   }
 
   heartbeat() {
+    if (!this.ctx) return;
     // Глухой, низкий удар сердца при пробуждении
     this._thud(this._t(), 0.75, 62);
     this._thud(this._t() + 0.26, 0.45, 52);
@@ -365,6 +366,7 @@ export class AudioSys {
     this._schedTimer = setInterval(sched, 60);
   }
   _thud(t, gain, f0) {
+    if (!this.ctx) return;
     const C = this.ctx;
     const o = C.createOscillator(); o.type = 'sine';
     o.frequency.setValueAtTime(f0, t);
@@ -376,6 +378,7 @@ export class AudioSys {
     o.connect(g); g.connect(this.music); o.start(t); o.stop(t + 0.3);
   }
   _swell(t) {
+    if (!this.ctx) return;
     const C = this.ctx;
     const n = C.createBufferSource(); n.buffer = this.noiseBuf; n.playbackRate.value = 0.5;
     const f = C.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
@@ -390,6 +393,7 @@ export class AudioSys {
     n.start(t); n.stop(t + 5);
   }
   _gong(t) {
+    if (!this.ctx) return;
     const C = this.ctx;
     // диссонансная минимая секунда (E3/Bb3) + низкий бой, долгий спад
     [233.08, 246.94].forEach(fr => {
