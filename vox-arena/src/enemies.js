@@ -75,6 +75,7 @@ export class EnemyManager {
       root: body, j: built.joints, mats,
       shadowMesh: sh,
       pos: group.position,
+      homePos: new THREE.Vector3(x, 0, z),
       hp: T.hp * (1 + wave * 0.07), maxHp: T.hp * (1 + wave * 0.07),
       speed: T.speed * Math.min(1.12, 1 + wave * 0.012),
       state: aiEnabled ? 'spawn' : 'dummy_preview',
@@ -91,8 +92,8 @@ export class EnemyManager {
       hasLOS: false,
       lastKnownPlayerPos: null,
       investigateT: 0,
-      patrolTarget: new THREE.Vector3(x + rand(-8, 8), 0, z + rand(-8, 8)),
-      patrolWaitT: 0,
+      patrolTarget: new THREE.Vector3(x + rand(-3.5, 3.5), 0, z + rand(-3.5, 3.5)),
+      patrolWaitT: rand(0.5, 2.0),
       flankAngle,
 
       // --- Физика отдачи и равновесие (Poise) ---
@@ -142,16 +143,27 @@ export class EnemyManager {
   }
 
   // Звуковое оповещение монстров от выстрелов и шума (Alert on gunshot/kick)
-  alertSound(soundOrigin, radius = 35) {
+  alertSound(soundOrigin, baseRadius = 26, arena = null) {
     for (const e of this.list) {
-      if (e.state === 'dead' || e.state === 'dying' || e.state === 'corpse_ragdoll') continue;
+      if (e.state === 'dead' || e.state === 'dying' || e.state === 'corpse_ragdoll' || e.aiDisabled) continue;
       const dx = soundOrigin.x - e.pos.x, dz = soundOrigin.z - e.pos.z;
       const dist = Math.hypot(dx, dz);
-      if (dist <= radius) {
+
+      let effectiveRadius = baseRadius;
+      if (arena && arena.raycastWorld) {
+        const checkRay = _v2.set(dx, 0.4, dz).normalize();
+        const hit = arena.raycastWorld(_v.set(e.pos.x, e.pos.y + 1.0, e.pos.z), checkRay, dist);
+        // Звук через закрытые переборки/двери приглушается в 2.5 раза
+        if (hit && hit.dist < dist - 0.5) {
+          effectiveRadius *= 0.4;
+        }
+      }
+
+      if (dist <= effectiveRadius) {
         e.lastKnownPlayerPos = soundOrigin.clone();
-        if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
+        if (e.state === 'patrol' || e.state === 'wander') {
           e.state = 'investigate';
-          e.investigateT = rand(6, 10);
+          e.investigateT = rand(5, 8);
         }
       }
     }
@@ -420,7 +432,6 @@ export class EnemyManager {
 
           if (e.patrolWaitT > 0) {
             e.patrolWaitT -= dt;
-            // Стоит на месте, осматривается
             break;
           }
 
@@ -428,16 +439,16 @@ export class EnemyManager {
           const pdx = targetX - e.pos.x, pdz = targetZ - e.pos.z;
           const pDist = Math.hypot(pdx, pdz);
 
-          if (pDist < 1.2 || Math.random() < dt * 0.08) {
-            // Выбираем новую точку патрулирования
-            const sp = pick(arena.spawnPoints) || { x: 0, z: 0 };
-            e.patrolTarget.set(sp.x + rand(-6, 6), 0, sp.z + rand(-6, 6));
-            e.patrolWaitT = rand(1.0, 2.5);
+          if (pDist < 0.8 || Math.random() < dt * 0.12) {
+            // Патрулирует только внутри своей комнаты / сектора вокруг точки приписки
+            const hp = e.homePos || e.pos;
+            e.patrolTarget.set(hp.x + rand(-3.5, 3.5), 0, hp.z + rand(-3.5, 3.5));
+            e.patrolWaitT = rand(1.5, 3.5);
             break;
           }
 
-          const moveX = pdx / pDist, moveZ = pdz / pDist;
-          const patrolSpeed = e.speed * 0.65;
+          const moveX = pdx / (pDist || 1), moveZ = pdz / (pDist || 1);
+          const patrolSpeed = e.speed * 0.55;
 
           this._moveAndOrient(e, moveX, moveZ, patrolSpeed, dt, arena);
           break;

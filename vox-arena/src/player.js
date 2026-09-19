@@ -104,6 +104,11 @@ export class Player {
     this.spillLight.position.set(0.16, -0.10, -0.2);
     camera.add(this.spillLight);
 
+    // Постоянный аварийный свет скафандра (Suit Ambient Light) — окружение всегда видно
+    this.bodyLight = new THREE.PointLight(0xc8e4ff, 3.2, 16, 1.1);
+    this.bodyLight.position.set(0, 0.1, -0.1);
+    camera.add(this.bodyLight);
+
     // ========================================================================
     // Боевой армейский пинок (Melee Kick)
     // ========================================================================
@@ -143,10 +148,12 @@ export class Player {
     if (mode === 'sandbox') {
       this.unlockedWeapons = [true, true];
       this.curSlot = 0;
+      this.eyeH = 1.62;
     } else {
-      // В сюжетной кампании игрок просыпается БЕЗ ОРУЖИЯ
+      // В сюжетной кампании игрок просыпается БЕЗ ОРУЖИЯ в полулежачем положении
       this.unlockedWeapons = [false, false];
       this.curSlot = -1;
+      this.eyeH = 1.05;
     }
 
     this.prevSlot = -1;
@@ -244,6 +251,11 @@ export class Player {
   update(dt, input, arena, ctx) {
     const { enemies, fx, sfx, hud, props } = ctx;
     const w = this.curWeapon;
+
+    // Плавный подъем при пробуждении
+    if (this.eyeH < 1.62) {
+      this.eyeH = Math.min(1.62, this.eyeH + dt * 0.9);
+    }
 
     // --- Переключение оружия по клавишам ---
     if (input.keys.has('Digit1') || input.keys.has('Numpad1')) {
@@ -567,7 +579,7 @@ export class Player {
         if (hitEnemy || hitProp) {
           this.shake = Math.min(0.45, this.shake + 0.22);
         }
-        enemies.alertSound(this.pos, 14);
+        enemies.alertSound(this.pos, 14, arena);
       }
 
       if (this.kickT >= this.kickDur) {
@@ -606,7 +618,7 @@ export class Player {
     this.recoilVel += rand(1.9, 2.5);
     this.kickZ = 0.05;
 
-    enemies.alertSound(origin, 32);
+    enemies.alertSound(origin, 32, arena);
     if (this.onShoot) this.onShoot();
 
     const MAXD = 120;
@@ -662,7 +674,7 @@ export class Player {
     fx.shotgunMuzzle(_muzzleP, _fwd);
     sfx.shotgun();
 
-    enemies.alertSound(origin, 45);
+    enemies.alertSound(origin, 45, arena);
     this.recoilVel += rand(5.5, 7.5);
     this.kickZ = 0.12;
     this.shake = Math.min(0.4, this.shake + 0.16);
