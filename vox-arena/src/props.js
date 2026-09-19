@@ -35,7 +35,7 @@ export class CrateProp {
   constructor(scene, T, x, y, z, sx = 1.4, sy = 1.4, sz = 1.4) {
     this.scene = scene;
     this.size = new THREE.Vector3(sx, sy, sz);
-    this.mass = Math.max(20, sx * sy * sz * 28.0); // 25-60 кг
+    this.mass = Math.max(22, sx * sy * sz * 30.0); // 30-65 кг
     this.invMass = 1.0 / this.mass;
 
     // Тензор инерции сплошного прямоугольного параллелепипеда (кубоида)
@@ -71,14 +71,12 @@ export class CrateProp {
     const woodBox = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), matWood);
     this.mesh.add(woodBox);
 
-    // Металлические опоясывающие стальные стяжки по бокам (не перекрывают верхнюю и нижнюю крышки!)
+    // Металлические опоясывающие стальные стяжки по бокам
     const metalMat = new THREE.MeshLambertMaterial({ map: T.platform, color: 0x4a4a50, flatShading: true });
     const strapH = Math.min(0.065, sy * 0.08);
 
-    // Верхняя боковая стяжка (расположена строго на боковых гранях)
     const strapTop = new THREE.Mesh(new THREE.BoxGeometry(sx * 1.012, strapH, sz * 1.012), metalMat);
     strapTop.position.y = sy * 0.32;
-    // Нижняя боковая стяжка
     const strapBot = new THREE.Mesh(new THREE.BoxGeometry(sx * 1.012, strapH, sz * 1.012), metalMat);
     strapBot.position.y = -sy * 0.32;
     this.mesh.add(strapTop, strapBot);
@@ -173,8 +171,8 @@ export class CrateProp {
     }
 
     // Сопротивление воздуха
-    const linearDamping = Math.pow(0.985, dt * 60);
-    const angularDamping = Math.pow(0.975, dt * 60);
+    const linearDamping = Math.pow(0.96, dt * 60);
+    const angularDamping = Math.pow(0.92, dt * 60);
     this.vel.x *= linearDamping;
     this.vel.z *= linearDamping;
     this.angVel.multiplyScalar(angularDamping);
@@ -186,6 +184,7 @@ export class CrateProp {
 
     const normalTorqueArm = new THREE.Vector3();
     const invInertiaTorque = new THREE.Vector3();
+    let currentGroundY = 0;
 
     for (let i = 0; i < 8; i++) {
       // Мировое положение вершины
@@ -193,11 +192,12 @@ export class CrateProp {
       const cornerWorld = this.pos.clone().add(r);
 
       const groundY = arena ? arena.groundTopAt(cornerWorld.x, cornerWorld.z, cornerWorld.y) : 0;
+      currentGroundY = groundY;
       const penetration = groundY - cornerWorld.y;
 
-      if (penetration > 0) {
+      if (penetration > -0.02) {
         contactsCount++;
-        maxPenetration = Math.max(maxPenetration, penetration);
+        maxPenetration = Math.max(maxPenetration, Math.max(0, penetration));
 
         // Линейная скорость вершины: v_corner = v + omega x r
         const vCorner = new THREE.Vector3().crossVectors(this.angVel, r).add(this.vel);
@@ -209,8 +209,8 @@ export class CrateProp {
         const Kn = this.invMass + invInertiaTorque.dot(normalTorqueArm);
 
         // Коэффициент упругости отскока
-        const restitution = vn < -1.4 ? 0.24 : 0.0;
-        const bias = Math.min(3.5, penetration * 24.0);
+        const restitution = vn < -1.4 ? 0.22 : 0.0;
+        const bias = Math.min(3.5, Math.max(0, penetration) * 26.0);
         const jn = (-(1.0 + restitution) * vn + bias) / Math.max(1e-5, Kn);
 
         if (jn > 0) {
@@ -230,7 +230,7 @@ export class CrateProp {
             this.soundCool = 0.16;
           }
 
-          // Трение Кулона (Coulomb Friction) о пол в тангенциальном направлении
+          // Мощное трение Кулона (Friction) о пол
           const vTangent = vCorner.clone().sub(groundNormal.clone().multiplyScalar(vn));
           const vt = vTangent.length();
 
@@ -240,7 +240,7 @@ export class CrateProp {
             applyInvInertia(tanTorqueArm, this.quat, this.invInertiaBody, invInertiaTorque);
             const Kt = this.invMass + invInertiaTorque.dot(tanTorqueArm);
 
-            const mu = 0.58; // коэффициент трения дерева о камень
+            const mu = 0.65; // высокое трение дерева о камень
             let jt = -vt / Math.max(1e-5, Kt);
             jt = Math.max(-mu * jn, Math.min(mu * jn, jt));
 
@@ -255,7 +255,26 @@ export class CrateProp {
         }
 
         // Выталкивание вершины из пола
-        this.pos.y += penetration * 0.45;
+        if (penetration > 0) {
+          this.pos.y += penetration * 0.45;
+        }
+      }
+    }
+
+    // Сильное гашение вращения и скольжения при контакте с полом
+    if (contactsCount >= 1) {
+      const floorFriction = Math.pow(0.68, dt * 60);
+      this.vel.x *= floorFriction;
+      this.vel.z *= floorFriction;
+      this.angVel.multiplyScalar(Math.pow(0.55, dt * 60));
+
+      const horiz = Math.hypot(this.vel.x, this.vel.z);
+      if (horiz < 0.12) {
+        this.vel.x = 0;
+        this.vel.z = 0;
+      }
+      if (this.angVel.length() < 0.15) {
+        this.angVel.set(0, 0, 0);
       }
     }
 
@@ -273,9 +292,9 @@ export class CrateProp {
     }
 
     // 5. Успокоение и перевод в стабильный покой (Resting State)
-    if (contactsCount >= 3 && horizSpd < 0.08 && Math.abs(this.vel.y) < 0.1 && this.angVel.length() < 0.15) {
+    if (contactsCount >= 2 && horizSpd < 0.15 && Math.abs(this.vel.y) < 0.2 && this.angVel.length() < 0.2) {
       this.stillTime += dt;
-      if (this.stillTime > 0.28) {
+      if (this.stillTime > 0.08) {
         this.vel.set(0, 0, 0);
         this.angVel.set(0, 0, 0);
 
@@ -286,6 +305,7 @@ export class CrateProp {
         euler.z = snap(euler.z);
         this.quat.setFromEuler(euler);
 
+        this.pos.y = currentGroundY + this.size.y * 0.5;
         this.resting = true;
       }
     } else {
@@ -430,9 +450,14 @@ export class PropsManager {
         pos.x += pushX;
         pos.z += pushZ;
 
-        // Мягко передаем импульс движения тяжелому ящику (без взлетов и запусков!)
-        p.vel.x -= (dx / d) * 1.8;
-        p.vel.z -= (dz / d) * 1.8;
+        // Сдвигаем ящик в сторону толкания БЕЗ вращения (без бесконечного вращения!)
+        const pushDirX = -(dx / d);
+        const pushDirZ = -(dz / d);
+        p.pos.x += pushDirX * push * 0.35;
+        p.pos.z += pushDirZ * push * 0.35;
+        p.vel.x = pushDirX * 1.1;
+        p.vel.z = pushDirZ * 1.1;
+        p.angVel.set(0, 0, 0); // Обнуляем угловую скорость при толкании игроком
         p.resting = false;
         p.stillTime = 0;
       }

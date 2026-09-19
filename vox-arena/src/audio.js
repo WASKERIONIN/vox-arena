@@ -55,81 +55,143 @@ export class AudioSys {
 
   // ---- SFX ----
   shot() {
-    this._noise(0.16, { freq: 2200, q: 0.7, gain: 0.9, sweepTo: 300, type: 'lowpass' });
-    this._noise(0.05, { freq: 5200, q: 1.2, gain: 0.5 });
-    this._tone('square', 150, 55, 0.09, 0.5);
-    this._tone('sawtooth', 700, 120, 0.05, 0.18);
-    this._tone('square', 2400, 2000, 0.02, 0.05, 0.06); // щелчок гильзы
+    // Выстрел 7.62мм автомата: мощный пороховой хлопок, глухой бас и лязг затвора
+    this._noise(0.18, { freq: 1800, q: 0.8, gain: 1.0, sweepTo: 140, type: 'lowpass' });
+    this._noise(0.04, { freq: 4800, q: 2.0, gain: 0.65 });
+    this._tone('sine', 210, 42, 0.16, 0.75);
+    this._tone('triangle', 480, 85, 0.08, 0.35);
+    this._noise(0.06, { freq: 2800, q: 2.5, gain: 0.22, at: 0.04 }); // лязг затвора
   }
+
   shotgun() {
-    // Сокрушительный грохочущий выстрел дуплета
-    this._noise(0.32, { freq: 3200, q: 0.6, gain: 1.2, sweepTo: 80, type: 'lowpass' });
-    this._noise(0.12, { freq: 6500, q: 1.5, gain: 0.8 });
-    this._tone('sine', 180, 28, 0.35, 1.0);
-    this._tone('sawtooth', 550, 45, 0.22, 0.6);
-    this._noise(0.45, { freq: 450, gain: 0.4, sweepTo: 40, type: 'lowpass', at: 0.04 });
+    // Сокрушительный громовой выстрел 12-го калибра: оглушительный взрыв пороха, треск дроби и глубокий суб-бас
+    this._noise(0.38, { freq: 3600, q: 0.5, gain: 1.45, sweepTo: 50, type: 'lowpass' });
+    this._noise(0.08, { freq: 7200, q: 1.2, gain: 0.95 });
+    this._tone('sine', 160, 22, 0.42, 1.25);
+    this._tone('sawtooth', 380, 32, 0.26, 0.7);
+    this._noise(0.5, { freq: 320, gain: 0.6, sweepTo: 30, type: 'lowpass', at: 0.03 });
   }
+
   shotgunReload() {
-    // Перелом стволов + выброс гильз + вставка патронов + захлопывание
-    this._tone('square', 1200, 600, 0.06, 0.25, 0); // щелчок отпирания
-    this._noise(0.08, { freq: 1600, gain: 0.35, at: 0.05 });
-    this._tone('sine', 850, 1100, 0.04, 0.2, 0.35); // выброс гильзы 1
-    this._tone('sine', 950, 1200, 0.04, 0.2, 0.42); // выброс гильзы 2
-    this._noise(0.08, { freq: 2200, gain: 0.4, at: 0.85 }); // вставка патронов
-    this._tone('square', 500, 900, 0.05, 0.3, 0.9);
-    this._tone('square', 1400, 400, 0.08, 0.45, 1.25); // захлопывание
-    this._noise(0.12, { freq: 800, gain: 0.5, at: 1.25, sweepTo: 100 });
+    // Реалистичная тяжелая перезарядка переломного обреза:
+    // 1) Отпирание рычага и перелом тяжелых стальных стволов (t = 0.0s)
+    this._noise(0.06, { freq: 2600, q: 2.5, gain: 0.4, type: 'bandpass' });
+    this._tone('triangle', 520, 240, 0.07, 0.35, 0);
+    this._tone('sine', 180, 65, 0.12, 0.45, 0.03); // глухой ход шарнира
+    this._noise(0.09, { freq: 950, q: 1.2, gain: 0.3, at: 0.05, sweepTo: 300 });
+
+    // 2) Выброс стреляных латунных гильз пружинным экстрактором (t = 0.34s)
+    this._noise(0.04, { freq: 4200, q: 3.0, gain: 0.55, at: 0.34 }); // щелчок пружины
+    this._tone('sine', 1650, 1400, 0.05, 0.22, 0.34); // металлический дзинь гильзы 1
+    this._tone('sine', 1920, 1600, 0.05, 0.18, 0.38); // металлический дзинь гильзы 2
+    this._noise(0.06, { freq: 1800, q: 2.0, gain: 0.25, at: 0.42 });
+
+    // 3) Вставка двух свежих патронов в патронники казённика (t = 0.75s, 0.98s)
+    // Первый патрон: скольжение пластика по стали + глухой упор латунной закраины
+    this._noise(0.07, { freq: 1600, q: 2.2, gain: 0.35, at: 0.76, type: 'bandpass' });
+    this._tone('triangle', 340, 160, 0.06, 0.38, 0.78);
+    this._tone('sine', 140, 50, 0.08, 0.45, 0.80);
+
+    // Второй патрон: вход в соседний ствол с четкой посадкой
+    this._noise(0.07, { freq: 1800, q: 2.2, gain: 0.35, at: 0.96, type: 'bandpass' });
+    this._tone('triangle', 380, 180, 0.06, 0.4, 0.98);
+    this._tone('sine', 150, 55, 0.08, 0.45, 1.00);
+
+    // 4) Мощное, тяжелое захлопывание и блокировка стволов (t = 1.35s) — «ХЛОП-КЛАК!»
+    this._noise(0.05, { freq: 4800, q: 1.8, gain: 0.7, at: 1.35 }); // щелчок стального замка
+    this._tone('triangle', 640, 190, 0.1, 0.6, 1.35); // резонанс стали
+    this._tone('sine', 160, 38, 0.2, 0.85, 1.35);     // глухой удар запирания
+    this._noise(0.14, { freq: 650, q: 1.0, gain: 0.65, at: 1.36, sweepTo: 70, type: 'lowpass' });
   }
+
   weaponSwitch() {
-    // Лязг металла и затвора при смене оружия
-    this._tone('square', 800, 400, 0.05, 0.2, 0);
-    this._noise(0.08, { freq: 2400, gain: 0.3, at: 0.04 });
-    this._tone('triangle', 600, 900, 0.06, 0.25, 0.12);
+    // Тяжелый лязг оружейного металла и антабок
+    this._noise(0.06, { freq: 2400, q: 2.5, gain: 0.35, type: 'bandpass' });
+    this._tone('triangle', 450, 180, 0.07, 0.3, 0);
+    this._noise(0.08, { freq: 1200, q: 1.5, gain: 0.3, at: 0.06 });
+    this._tone('sine', 220, 90, 0.09, 0.35, 0.08);
   }
+
   kick() {
-    // Свист рассекаемого воздуха + сокрушительный удар ботинком
-    this._noise(0.14, { freq: 800, gain: 0.4, sweepTo: 200, type: 'bandpass' });
-    this._noise(0.22, { freq: 350, q: 1.4, gain: 0.9, sweepTo: 50, type: 'lowpass', at: 0.08 });
-    this._tone('sine', 140, 35, 0.25, 0.8, 0.08);
-    this._tone('sawtooth', 320, 80, 0.12, 0.4, 0.08);
+    // Тяжелый свист выпада ноги + сокрушительный удар подошвой армейского ботинка
+    this._noise(0.12, { freq: 900, gain: 0.45, sweepTo: 220, type: 'bandpass' });
+    this._noise(0.24, { freq: 380, q: 1.5, gain: 1.0, sweepTo: 45, type: 'lowpass', at: 0.07 });
+    this._tone('sine', 150, 30, 0.28, 0.9, 0.07);
+    this._tone('triangle', 280, 70, 0.14, 0.5, 0.07);
   }
-  dry() { this._tone('square', 1800, 1400, 0.03, 0.12); }
+
+  dry() {
+    // Сухой щелчок бойка по пустому патроннику
+    this._noise(0.03, { freq: 3600, q: 3.0, gain: 0.45 });
+    this._tone('triangle', 850, 320, 0.04, 0.3);
+  }
+
   reload() {
-    this._tone('square', 900, 500, 0.04, 0.14, 0);
-    this._noise(0.06, { freq: 1400, gain: 0.25, at: 0.35 });
-    this._tone('square', 700, 1100, 0.05, 0.18, 0.85);
-    this._noise(0.05, { freq: 2200, gain: 0.3, at: 1.2 });
+    // Перезарядка штурмового автомата: выброс магазина + защёлкивание нового + затвор
+    this._noise(0.05, { freq: 2200, q: 2.0, gain: 0.35, at: 0 }); // защелка
+    this._tone('triangle', 480, 200, 0.06, 0.3, 0);
+    this._noise(0.08, { freq: 1100, gain: 0.3, at: 0.32 }); // извлечение магазина
+    // Вставка полного магазина (четкий щелчок фиксатора)
+    this._noise(0.07, { freq: 2800, q: 2.5, gain: 0.45, at: 0.82 });
+    this._tone('triangle', 560, 220, 0.08, 0.4, 0.82);
+    this._tone('sine', 180, 60, 0.12, 0.5, 0.83);
+    // Досылание патрона (спуск затвора из затворной задержки)
+    this._noise(0.06, { freq: 4200, q: 2.0, gain: 0.55, at: 1.18 });
+    this._tone('triangle', 720, 280, 0.08, 0.5, 1.18);
+    this._tone('sine', 190, 70, 0.1, 0.5, 1.19);
   }
-  hit() { this._noise(0.09, { freq: 500, q: 1, gain: 0.5, type: 'lowpass' }); this._tone('sine', 220, 90, 0.08, 0.4); }
-  headshot() { this._tone('square', 1500, 2400, 0.05, 0.2); this._noise(0.06, { freq: 900, gain: 0.3 }); }
+  hit() {
+    // Влажный мясной шлепок пули о плоть
+    this._noise(0.08, { freq: 1100, q: 1.4, gain: 0.55, type: 'bandpass' });
+    this._tone('sine', 160, 45, 0.09, 0.45);
+  }
+
+  headshot() {
+    // Хруст черепной коробки + мокрый разрыв мозговых тканей
+    this._noise(0.12, { freq: 3200, q: 2.2, gain: 0.65, sweepTo: 220, type: 'bandpass' });
+    this._tone('triangle', 380, 75, 0.12, 0.5);
+    this._tone('sine', 180, 40, 0.16, 0.65);
+  }
+
   gib() {
-    this._noise(0.34, { freq: 700, q: 0.8, gain: 0.9, sweepTo: 90, type: 'lowpass' });
-    this._tone('sine', 160, 40, 0.25, 0.6);
-    this._noise(0.12, { freq: 1600, gain: 0.35, at: 0.07 });
+    // Сокрушительный взрыв плоти на ошмётки
+    this._noise(0.36, { freq: 1100, q: 0.8, gain: 1.1, sweepTo: 70, type: 'lowpass' });
+    this._tone('sine', 140, 30, 0.28, 0.75);
+    this._noise(0.14, { freq: 2400, q: 2.0, gain: 0.5, at: 0.05 });
   }
-  boneCrack() { this._noise(0.08, { freq: 2600, q: 3, gain: 0.4 }); this._tone('triangle', 400, 90, 0.07, 0.3); }
+
+  boneCrack() {
+    // Сухой ломкий хруст кости
+    this._noise(0.07, { freq: 3200, q: 3.5, gain: 0.5, type: 'bandpass' });
+    this._tone('triangle', 520, 110, 0.06, 0.35);
+  }
+
   woodHit() {
     // Звук попадания пули в дерево: сухой треск + глухой резонанс
     this._noise(0.07, { freq: 1900, q: 2.2, gain: 0.45, type: 'bandpass' });
     this._tone('triangle', 320, 110, 0.08, 0.35);
   }
+
   crateThud(speed = 1.0) {
     // Глухой тяжелый удар деревянного ящика о пол/стену
-    const vol = Math.min(1.0, 0.4 * speed);
+    const vol = Math.min(1.0, 0.45 * speed);
     this._noise(0.14, { freq: 380, q: 1.4, gain: 0.7 * vol, sweepTo: 70, type: 'lowpass' });
     this._tone('sine', 130, 38, 0.18, 0.6 * vol);
-    this._tone('square', 240, 80, 0.05, 0.25 * vol);
+    this._tone('triangle', 240, 60, 0.06, 0.35 * vol);
   }
+
   woodSnap() {
     // Сокрушительный раскол ящика в щепки
     this._noise(0.25, { freq: 2400, q: 1.2, gain: 0.85, sweepTo: 140, type: 'lowpass' });
     this._tone('sawtooth', 360, 60, 0.22, 0.5);
     this._noise(0.12, { freq: 3800, gain: 0.45, at: 0.02 });
   }
+
   crateSlide() {
     // Шуршание трения ящика о пол
     this._noise(0.12, { freq: 550, q: 1.8, gain: 0.25, type: 'bandpass' });
   }
+
   limbSever() {
     // сочный мокрый отрыв плоти + хруст кости + глухой удар
     this._noise(0.28, { freq: 1200, q: 0.8, gain: 0.9, sweepTo: 120, type: 'lowpass' });
@@ -137,29 +199,48 @@ export class AudioSys {
     this._noise(0.14, { freq: 2800, q: 2.2, gain: 0.45, at: 0.02, sweepTo: 400 });
     this._tone('sine', 95, 30, 0.35, 0.65, 0.05);
   }
+
   thud() {
     // глухой удар тела об пол при падении
     this._noise(0.18, { freq: 350, q: 1.2, gain: 0.75, sweepTo: 60, type: 'lowpass' });
     this._tone('sine', 110, 32, 0.22, 0.7);
   }
+
   corpseBoil() {
     // бурление / бульканье трупа перед взрывом
     this._noise(0.15, { freq: 1800, q: 4.5, gain: 0.35, sweepTo: 600, type: 'bandpass' });
     this._tone('sine', 380, 180, 0.08, 0.22);
   }
+
   monsterGetup() {
     // злобный сиплый рык при подъёме на ноги
     this._tone('sawtooth', 75, 140, 0.45, 0.35);
     this._noise(0.4, { freq: 450, gain: 0.28, sweepTo: 180, type: 'lowpass' });
   }
-  hurt() { this._tone('sawtooth', 240, 80, 0.16, 0.4); this._noise(0.12, { freq: 400, gain: 0.35, type: 'lowpass' }); }
-  pickup() { this._tone('sine', 620, 620, 0.07, 0.3); this._tone('sine', 930, 930, 0.12, 0.3, 0.07); }
+
+  hurt() {
+    this._tone('sawtooth', 240, 80, 0.16, 0.4);
+    this._noise(0.12, { freq: 400, gain: 0.35, type: 'lowpass' });
+  }
+
+  pickup() {
+    // Мрачный щелчок аптечки / впрыск стимулятора
+    this._noise(0.06, { freq: 2200, q: 2.5, gain: 0.3 });
+    this._tone('triangle', 320, 580, 0.1, 0.25);
+  }
+
   waveHorn() {
-    this._tone('sawtooth', 98, 98, 0.9, 0.32); this._tone('sawtooth', 147, 147, 0.9, 0.22);
+    this._tone('sawtooth', 98, 98, 0.9, 0.32);
+    this._tone('sawtooth', 147, 147, 0.9, 0.22);
     this._tone('sawtooth', 196, 185, 0.9, 0.14);
     this._noise(0.8, { freq: 300, gain: 0.15, type: 'lowpass' });
   }
-  waveClear() { [440, 554, 659].forEach((f, i) => this._tone('square', f, f, 0.14, 0.16, i * 0.09)); }
+
+  waveClear() {
+    // Зловещий затихающий резонанс вместо аркадных колокольчиков
+    this._tone('triangle', 180, 90, 0.5, 0.25);
+    this._noise(0.4, { freq: 450, gain: 0.2, type: 'lowpass' });
+  }
   growl(pitch = 90) { this._tone('sawtooth', pitch, pitch * 0.6, 0.3, 0.3); this._noise(0.25, { freq: 250, gain: 0.2, type: 'lowpass' }); }
   swing() { this._noise(0.12, { freq: 900, q: 2, gain: 0.3, sweepTo: 250 }); }
   explosion() {

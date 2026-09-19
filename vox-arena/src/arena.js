@@ -82,11 +82,13 @@ export function buildArena(scene, T, mapId = 'arena', propsMgr = null) {
       const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 4.6, 1), gateMat); p1.position.set(-2.2, 2.3, 0.4);
       const p2 = p1.clone(); p2.position.x = 2.2;
       const top = new THREE.Mesh(new THREE.BoxGeometry(5.1, 0.7, 1), gateMat); top.position.set(0, 4.95, 0.4);
-      const portal = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 4.2), portalMat); portal.position.set(0, 2.2, 0.55);
-      const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.glow, color: 0xff2018, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
-      innerGlow.scale.set(5.5, 6.5, 1); innerGlow.position.set(0, 2.3, 0.4);
+      // Портал строго подогнан под внутренний просвет дверной рамы (ширина 3.68м, высота 4.58м)
+      const portal = new THREE.Mesh(new THREE.PlaneGeometry(3.68, 4.58), portalMat); portal.position.set(0, 2.3, 0.4);
+      // Внутреннее свечение портала строго в границах проёма (не вылезает за пределы коробки)
+      const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.glow, color: 0xff1810, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+      innerGlow.scale.set(3.4, 4.3, 1); innerGlow.position.set(0, 2.3, 0.42);
       g.add(p1, p2, top, portal, innerGlow);
-      const pl = new THREE.PointLight(0xff2418, 26, 14, 2); pl.position.set(0, 3, -1.5); g.add(pl);
+      const pl = new THREE.PointLight(0xff2015, 18, 9, 2); pl.position.set(0, 2.3, 0.1); g.add(pl);
       scene.add(g); meshes.push(g);
       spawnPoints.push(V3(gt.x * 0.93, 0, gt.z * 0.93));
     }
