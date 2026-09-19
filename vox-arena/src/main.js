@@ -5,6 +5,7 @@ import { PS1 } from './ps1.js';
 import { AudioSys } from './audio.js';
 import { FX } from './fx.js';
 import { buildArena, MAPS } from './arena.js';
+import { StarshipLevel } from './starship.js';
 import { PropsManager } from './props.js';
 import { Player } from './player.js';
 import { EnemyManager } from './enemies.js';
@@ -29,14 +30,14 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(settings.fov, 1, 0.08, 500);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
-const fogObj = new THREE.Fog(0x12080a, 8, 85);
+const fogObj = new THREE.Fog(0x06080d, 4, 65);
 scene.fog = settings.fog ? fogObj : null;
 
 const T = makeTextures();
-let currentMapId = 'arena'; // По умолчанию возвращаемся на Колизей
-let currentGameMode = 'waves'; // 'waves' | 'sandbox'
+let currentMapId = 'starship'; // По умолчанию сюжетный звездолёт
+let currentGameMode = 'campaign'; // 'campaign' | 'sandbox'
 const props = new PropsManager(scene, T);
-let arena = buildArena(scene, T, currentMapId, props);
+let arena = new StarshipLevel(scene, T, props);
 const sfx = new AudioSys();
 const fx = new FX(scene, T);
 fx.setCamera(camera);
@@ -101,7 +102,6 @@ player.onHit = ({ head, killed, hitZone, isCorpse }) => {
 player.onReload = () => { };
 player.onDead = () => {
   if (currentGameMode === 'sandbox') {
-    // В песочнице мгновенно лечим игрока чтобы не прерывать тестирование
     player.hp = player.maxHp;
     hud.setHP(player.hp, player.maxHp);
     hud.styleEvent('ВОССТАНОВЛЕНИЕ ТЕСТОВОЙ БРОНИ');
@@ -122,7 +122,7 @@ player.onDead = () => {
   setTimeout(() => hud.fadeToBlack(), 500);
   setTimeout(() => {
     hud.death({
-      wave: waves.num, kills,
+      wave: 1, kills,
       acc: shotsFired ? Math.round(100 * shotsHit / shotsFired) : 0,
       headshots, score,
     });
@@ -130,34 +130,29 @@ player.onDead = () => {
 };
 
 const waves = new Waves(enemies, arena, {
-  waveStart: (n, total) => {
-    hud.setWave(n);
-    hud.banner('ВОЛНА ' + n, 'ПРОТИВНИКОВ: ' + total);
-    sfx.waveHorn();
-  },
-  countdown: (t, next) => hud.countdown(t, next),
+  waveStart: (n, total) => {},
+  countdown: (t, next) => {},
   portal: (x, z) => { fx.portal(new THREE.Vector3(x, 0, z)); },
-  waveClear: n => {
-    hud.banner('ВОЛНА ' + n + ' ЗАЧИЩЕНА', 'ВОССТАНОВЛЕНО +25 БРОНИ · СТИЛЬ +150');
-    player.heal(25); stylePts += 150; sfx.waveClear();
-  },
+  waveClear: n => {},
 });
 
 function onPickup() { player.heal(35); sfx.pickup(); hud.styleEvent('+35 БРОНЕПЛАСТИНЫ'); }
 
 function setMap(mapId) {
-  if (currentMapId === mapId && arena) return;
   currentMapId = mapId;
-  if (arena) arena.clearMap();
+  if (arena) arena.clear();
   props.clear();
-  arena = buildArena(scene, T, currentMapId, props);
-  waves.setArena(arena);
+  if (mapId === 'starship') {
+    arena = new StarshipLevel(scene, T, props);
+  } else {
+    arena = buildArena(scene, T, currentMapId, props);
+    waves.setArena(arena);
+  }
 }
 
 // ============================== СПАВНЕР И ПЕСОЧНИЦА ==============================
 function spawnSandboxMonster(typeName) {
   if (state !== 'playing') return;
-  // Спавним монстра на расстоянии 5.5 метров прямо по направлению взгляда игрока
   const dist = 5.5;
   const yaw = player.yaw;
   const wx = player.pos.x - Math.sin(yaw) * dist;
@@ -187,9 +182,9 @@ function clearSandbox() {
   enemies.clear();
   fx.clear();
   props.clear();
-  if (arena) arena.clearMap();
-  arena = buildArena(scene, T, currentMapId, props);
-  waves.setArena(arena);
+  if (arena) arena.clear();
+  arena = (currentMapId === 'starship') ? new StarshipLevel(scene, T, props) : buildArena(scene, T, currentMapId, props);
+  if (currentMapId !== 'starship') waves.setArena(arena);
   sfx.pickup();
   hud.styleEvent('АРЕНА И ОБЪЕКТЫ ПОЛНОСТЬЮ СБРОШЕНЫ');
 }
@@ -212,21 +207,25 @@ function enableFallback() {
   if (fallbackLook) return;
   fallbackLook = true;
   hud.fallback('Захват мыши недоступен в этом окне — обзор мышью по экрану или стрелками ←→↑↓. Для полного захвата скачайте файл и откройте локально.');
-  hud.hint('ЛКМ — огонь · 1/2/КОЛЕСО — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка');
+  hud.hint('ЛКМ — огонь · E — взаимодействие/терминалы · 1/2 — оружие · F/ПКМ — пинок · T — фонарь');
 }
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (!locked && state === 'playing' && !fallbackLook) pauseGame();
+  if (!locked && state === 'playing' && !fallbackLook && !hud.isTerminalOpen()) pauseGame();
 });
 document.addEventListener('pointerlockerror', () => enableFallback());
 
 document.addEventListener('mousemove', e => {
-  if (state !== 'playing') return;
+  if (state !== 'playing' || hud.isTerminalOpen()) return;
   if (locked || (fallbackLook && e.buttons >= 0)) look(e.movementX || 0, e.movementY || 0);
 });
 
 canvas.addEventListener('mousedown', e => {
   if (state !== 'playing') return;
+  if (hud.isTerminalOpen()) {
+    hud.hideTerminal();
+    return;
+  }
   if (!locked && !fallbackLook) tryLock();
   if (e.button === 0) {
     input.fire = true;
@@ -242,7 +241,7 @@ window.addEventListener('mouseup', e => {
 });
 
 window.addEventListener('wheel', e => {
-  if (state !== 'playing') return;
+  if (state !== 'playing' || hud.isTerminalOpen()) return;
   if (e.deltaY > 0) {
     player.switchWeapon(1, sfx, hud);
   } else if (e.deltaY < 0) {
@@ -255,6 +254,14 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
+
+  if (hud.isTerminalOpen()) {
+    if (e.code === 'KeyE' || e.code === 'Escape' || e.code === 'Space') {
+      hud.hideTerminal();
+    }
+    return;
+  }
+
   input.keys.add(e.code);
   if (e.code === 'KeyR') input.reload = true;
   if (e.code === 'Space') input.jump = true;
@@ -264,7 +271,7 @@ window.addEventListener('keydown', e => {
   }
 
   // Горячие клавиши спавнера и песочницы
-  if (state === 'playing') {
+  if (state === 'playing' && currentGameMode === 'sandbox') {
     if (e.code === 'Digit4' || e.code === 'Numpad4') spawnSandboxMonster('zombie');
     if (e.code === 'Digit5' || e.code === 'Numpad5') spawnSandboxMonster('minion');
     if (e.code === 'Digit6' || e.code === 'Numpad6') spawnSandboxMonster('rogue');
@@ -281,40 +288,41 @@ window.addEventListener('keyup', e => {
 window.addEventListener('blur', () => { input.keys.clear(); input.fire = false; input.kick = false; });
 
 // ============================== переходы состояний ==============================
-function startRun(selectedMap = currentMapId, mode = 'waves') {
+function startRun(selectedMap = 'starship', mode = 'campaign') {
   currentGameMode = mode;
+  if (mode === 'campaign') selectedMap = 'starship';
   setMap(selectedMap);
+
   sfx.init();
   sfx.setVolumes(settings.sfxVol, settings.musicVol);
   sfx.startMusic();
-  enemies.clear(); fx.clear(); arena.resetPickups();
-
-  // Начальная позиция игрока по карте
-  const spawn = arena.mapDef.playerSpawn;
-  player.reset(spawn.x, spawn.y, spawn.z, spawn.yaw);
+  enemies.clear(); fx.clear();
 
   kills = score = shotsFired = shotsHit = headshots = stylePts = hitstop = 0;
   hud.forceClearOverlays();
   hud.noScreen(); hud.showGame(true, mode);
   hud.fadeFromBlack();
-  hud.setHP(player.hp, player.maxHp);
-  hud.setAmmo(player.mag, player.magSize, false, player.curSlot === 1);
-  hud.setWeaponSlot(player.curSlot);
-  hud.setFlashlight(player.flashlightOn);
-  hud.setKills(0); hud.setScore(0); hud.setStyle(0);
 
-  if (mode === 'waves') {
-    waves.reset();
-    hud.setWave(1);
-    hud.hint(fallbackLook
-      ? 'ЛКМ — огонь · 1/2 — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка'
-      : 'ЛКМ — огонь · 1/2/КОЛЕСО — оружие · F/ПКМ — пинок · T — фонарь · R — перезарядка');
+  if (mode === 'campaign') {
+    // Начальная позиция: внутри стазис-капсулы 04
+    player.reset(0, 0.4, 0, 0);
+    arena.populateEnemies(enemies);
+    hud.setObjective(arena.currentObjective);
+    hud.setHP(player.hp, player.maxHp);
+    hud.setAmmo(player.mag, player.magSize, false, false);
+    hud.setWeaponSlot(0);
+    hud.setFlashlight(true);
+
+    sfx.heartbeat();
+    hud.banner('СТАНЦИЯ «ЭРЕБ-7»', 'АВАРИЙНЫЙ СБРОС СТАЗИС-КАПСУЛЫ [E / ПРОБЕЛ]');
+    hud.hint('E / ПРОБЕЛ — открыть капсулу · E — взаимодействие · ЛКМ — огонь · F/ПКМ — пинок · T — фонарь');
   } else {
     // РЕЖИМ ПЕСОЧНИЦЫ / БЕСТИАРИЙ
+    const spawn = arena.mapDef ? arena.mapDef.playerSpawn : { x: 0, y: 0, z: 16, yaw: 0 };
+    player.reset(spawn.x, spawn.y, spawn.z, spawn.yaw);
     waves.state = 'idle';
     hud.countdown(0, 0);
     hud.setSandboxAIToggle(hud.aiEnabledInSandbox);
-    // Спавним тестового зомби прямо на центральной платформе перед игроком
     enemies.spawn('zombie', 0, 0, 1, !hud.aiEnabledInSandbox);
     hud.banner('ПЕСОЧНИЦА АКТИВИРОВАНА', 'КЛАВИШИ 4-8: СПАВН · 9: ИИ ВКЛ/ВЫКЛ · 0: ОЧИСТИТЬ');
     hud.hint('Клавиши 4-8 — спавн тварей · 9 — вкл/выкл ИИ · 0 — очистить · 1/2 — оружие · F — пинок');
@@ -381,6 +389,23 @@ function frame(now) {
   if (hitstop > 0) { hitstop -= dt; dt *= 0.12; }
 
   if (state === 'playing') {
+    if (arena.checkInteraction) {
+      const fwd = new THREE.Vector3();
+      camera.getWorldDirection(fwd);
+      const target = arena.checkInteraction(player.pos, fwd, 2.8);
+      if (target) {
+        const promptText = typeof target.prompt === 'function' ? target.prompt() : target.prompt;
+        hud.setInteractionPrompt(promptText);
+        if (input.keys.has('KeyE') || (target.type === 'cryo_pod' && input.jump)) {
+          input.keys.delete('KeyE');
+          if (target.type === 'cryo_pod') input.jump = false;
+          target.onUse(player, arena, sfx, hud, fx);
+        }
+      } else {
+        hud.setInteractionPrompt(null);
+      }
+    }
+
     if (input.keys.has('ArrowLeft')) player.yaw += 2.7 * dt;
     if (input.keys.has('ArrowRight')) player.yaw -= 2.7 * dt;
     if (input.keys.has('ArrowUp')) player.pitch = clamp(player.pitch + 1.9 * dt, -1.55, 1.55);
@@ -388,10 +413,8 @@ function frame(now) {
     player.update(dt, input, arena, { enemies, fx, sfx, hud, props });
     enemies.update(dt, player, arena);
     props.update(dt, arena, enemies, player, fx, sfx);
-    if (currentGameMode === 'waves') {
-      waves.update(dt);
-    }
-    arena.updatePickups(dt, time, player.pos, onPickup);
+    if (arena.update) arena.update(dt, time, player.pos);
+    if (arena.updatePickups) arena.updatePickups(dt, time, player.pos, onPickup);
     fx.update(dt, arena);
     stylePts = Math.max(0, stylePts - 55 * dt);
     hud.setHP(player.hp, player.maxHp);
@@ -399,7 +422,10 @@ function frame(now) {
     hud.setStyle(stylePts);
   } else if (state === 'menu') {
     const a = time * 0.12;
-    if (currentMapId === 'catacombs') {
+    if (currentMapId === 'starship') {
+      camera.position.set(Math.cos(a) * 6, 2.2 + Math.sin(a * 0.5) * 0.4, Math.sin(a) * 6);
+      camera.lookAt(0, 1.2, 0);
+    } else if (currentMapId === 'catacombs') {
       camera.position.set(Math.cos(a) * 14, 6.0 + Math.sin(a * 0.5) * 1.0, Math.sin(a) * 14);
       camera.lookAt(0, 1.4, 0);
     } else {
@@ -432,23 +458,6 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-window.__VOX__ = {
-  ready: false,
-  get state() { return state; },
-  gfx: applyFns,
-  start: (map = 'arena', mode = 'waves') => startRun(map, mode),
-  startSandbox: (map = 'arena') => startRun(map, 'sandbox'),
-  spawn: (typeName = 'minion', dx = 0, dz = -6, aiDisabled = false) => {
-    const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
-    const wx = player.pos.x + dx * c - dz * s;
-    const wz = player.pos.z + dx * s + dz * c;
-    return enemies.spawn(typeName, wx, wz, 1, aiDisabled);
-  },
-  setMap: mapId => setMap(mapId),
-  toggleAI: () => toggleSandboxAI(),
-  enemies, player, waves, hud, fx, props,
-  killAll: () => enemies.killAllInstant(),
-};
-
+window.__VOX__.ready = true;
 boot();
 requestAnimationFrame(frame);

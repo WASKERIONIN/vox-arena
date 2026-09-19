@@ -23,8 +23,10 @@ export class HUD {
       'damage-flash', 'lowhp', 'vignette', 'menu', 'settings', 'help', 'pause', 'death',
       'death-stats', 'loading', 'fallback-note', 'settings-rows', 'fade',
       'map-desc', 'map-arena', 'map-catacombs',
-      'mode-desc', 'mode-waves', 'mode-sandbox',
-      'sandbox-panel', 'sb-zombie', 'sb-minion', 'sb-rogue', 'sb-warrior', 'sb-mage', 'sb-ai-toggle', 'sb-clear'
+      'mode-desc', 'mode-campaign', 'mode-sandbox',
+      'sandbox-panel', 'sb-zombie', 'sb-minion', 'sb-rogue', 'sb-warrior', 'sb-mage', 'sb-ai-toggle', 'sb-clear',
+      'interaction-prompt', 'objective-box', 'objective-text',
+      'terminal-screen', 'terminal-title', 'terminal-content', 'btn-terminal-close'
     ]) {
       this.els[id] = $(id);
     }
@@ -35,17 +37,20 @@ export class HUD {
     this._hmT = null;
     this._eventT = null;
 
-    this.selectedMap = 'arena'; // По умолчанию классическая арена
-    this.gameMode = 'waves'; // 'waves' | 'sandbox'
-    this.aiEnabledInSandbox = false; // По умолчанию в песочнице ИИ выключен для превью
+    this.selectedMap = 'starship'; // По умолчанию сюжетный звездолет
+    this.gameMode = 'campaign';    // 'campaign' | 'sandbox'
+    this.aiEnabledInSandbox = false;
 
     this._buildSettings();
     this._bind();
-    this.selectMap('arena');
-    this.selectMode('waves');
+    this.selectMode('campaign');
   }
 
   selectMap(mapId) {
+    if (mapId === 'starship') {
+      this.selectedMap = 'starship';
+      return;
+    }
     if (!MAPS[mapId]) return;
     this.selectedMap = mapId;
 
@@ -70,14 +75,51 @@ export class HUD {
     });
 
     if (this.els['mode-desc']) {
-      this.els['mode-desc'].textContent = mode === 'waves'
-        ? 'Классическое выживание против нарастающих волн тварей.'
+      this.els['mode-desc'].textContent = mode === 'campaign'
+        ? 'Пробуждение в крио-капсуле на заражённом звездолёте «Эреб-7». Исследование медблока, сбор оружия, поиск ключ-карт, терминалы данных и запуск реактора.'
         : 'Свободный спавн любых тварей в центре арены с вкл/выкл ИИ для проверки анимаций и анатомии.';
     }
 
     if (this.onModeSelect) {
       this.onModeSelect(mode);
     }
+  }
+
+  setInteractionPrompt(text) {
+    const el = this.els['interaction-prompt'];
+    if (!el) return;
+    if (text) {
+      el.textContent = text;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  }
+
+  setObjective(text) {
+    const el = this.els['objective-text'];
+    if (el) el.textContent = 'ЦЕЛЬ: ' + text;
+  }
+
+  showTerminal(title, content) {
+    const scr = this.els['terminal-screen'];
+    const t = this.els['terminal-title'];
+    const c = this.els['terminal-content'];
+    if (scr && t && c) {
+      t.textContent = title;
+      c.textContent = content;
+      scr.classList.remove('hidden');
+    }
+  }
+
+  hideTerminal() {
+    const scr = this.els['terminal-screen'];
+    if (scr) scr.classList.add('hidden');
+  }
+
+  isTerminalOpen() {
+    const scr = this.els['terminal-screen'];
+    return scr && !scr.classList.contains('hidden');
   }
 
   setSandboxAIToggle(enabled) {
@@ -107,6 +149,8 @@ export class HUD {
     if (this.els.hitmarker) this.els.hitmarker.classList.remove('show');
     if (this.els.countdown) this.els.countdown.textContent = '';
     if (this.els.banner) this.els.banner.classList.remove('show');
+    this.setInteractionPrompt(null);
+    this.hideTerminal();
   }
 
   fadeToBlack() {
@@ -158,6 +202,7 @@ export class HUD {
     });
     click('btn-help', () => this.screen('help'));
     click('btn-help-close', () => this.screen('menu'));
+    click('btn-terminal-close', () => this.hideTerminal());
 
     click('btn-fullscreen', () => {
       try {
@@ -272,11 +317,17 @@ export class HUD {
   }
 
   // ---- в бою ----
-  showGame(on, mode = 'waves') {
+  showGame(on, mode = 'campaign') {
     if (this.els.hud) this.els.hud.classList.toggle('hidden', !on);
     if (this.els.vignette) this.els.vignette.classList.toggle('hidden', !on);
     if (this.els['sandbox-panel']) {
       this.els['sandbox-panel'].classList.toggle('hidden', !on || mode !== 'sandbox');
+    }
+    if (this.els['top-left']) {
+      this.els['top-left'].classList.toggle('hidden', mode === 'campaign');
+    }
+    if (this.els['objective-box']) {
+      this.els['objective-box'].classList.toggle('hidden', mode !== 'campaign');
     }
     if (mode === 'sandbox') {
       if (this.els['wave-label']) this.els['wave-label'].textContent = 'ПЕСОЧНИЦА';
@@ -395,7 +446,7 @@ export class HUD {
   death(stats) {
     if (this.els['death-stats']) {
       this.els['death-stats'].innerHTML =
-        `ВОЛНА ДОСТИГНУТА: <b>${stats.wave}</b><br>УБИТО ВРАГОВ: <b>${stats.kills}</b><br>` +
+        `ЗАДАЧА: <b>ЗВЕЗДОЛЁТ ЭРЕБ-7</b><br>УБИТО ТВАРЕЙ: <b>${stats.kills}</b><br>` +
         `ТОЧНОСТЬ: <b>${stats.acc}%</b> · ХЕДШОТОВ: <b>${stats.headshots}</b><br>ОЧКИ СТИЛЯ: <b>${stats.score}</b>`;
     }
     this.screen('death');

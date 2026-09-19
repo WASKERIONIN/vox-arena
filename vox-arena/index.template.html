@@ -80,6 +80,36 @@
 
   #fps{position:absolute;right:8px;top:6px;font-size:11px;color:#7f7;padding:2px 6px;background:rgba(0,0,0,.4);}
 
+  /* Интерактивный прицельный промпт (Interaction Prompt) */
+  #interaction-prompt{position:absolute;left:50%;top:58%;transform:translateX(-50%);
+    background:rgba(12,16,22,0.92);border:1px solid #33aaff;color:#d8eeff;
+    padding:8px 18px;font-size:13px;font-weight:700;letter-spacing:2px;
+    border-radius:3px;box-shadow:0 0 18px rgba(51,170,255,0.5);text-shadow:0 1px 2px #000;
+    pointer-events:none;transition:opacity 0.15s;white-space:nowrap;z-index:7;}
+
+  /* Блок текущей сюжетной задачи (Mission Objective Tracker) */
+  #objective-box{position:absolute;left:22px;top:20px;display:flex;align-items:center;gap:10px;
+    background:rgba(10,14,20,0.85);border:1px solid #284460;border-left:4px solid var(--amber);
+    padding:8px 14px;border-radius:3px;box-shadow:0 0 14px rgba(0,0,0,0.7);z-index:6;}
+  #objective-dot{width:9px;height:9px;background:var(--amber);border-radius:50%;box-shadow:0 0 10px var(--amber);animation:pulseDot 1.4s infinite;}
+  #objective-text{font-size:12px;font-weight:700;letter-spacing:1.5px;color:#f0e4d0;text-shadow:0 1px 1px #000;}
+  @keyframes pulseDot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.3;transform:scale(0.7);}}
+
+  /* ЭЛТ-Терминал данных (Retro Sci-Fi CRT Terminal Screen) */
+  #terminal-screen{position:fixed;inset:0;z-index:15;background:rgba(3,6,5,0.88);
+    display:flex;align-items:center;justify-content:center;pointer-events:auto;}
+  #terminal-box{width:min(700px,92vw);background:#07140b;border:2px solid #1f7a3f;
+    box-shadow:0 0 40px rgba(31,122,63,0.55),inset 0 0 40px rgba(0,0,0,0.8);
+    padding:26px 30px;color:#44ff88;font-family:Consolas,monospace;position:relative;border-radius:4px;}
+  #terminal-box::before{content:'';position:absolute;inset:0;
+    background:linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.35) 50%);
+    background-size:100% 4px;pointer-events:none;}
+  #terminal-title{font-size:16px;letter-spacing:3px;font-weight:900;color:#66ffaa;
+    border-bottom:1px solid #1f7a3f;padding-bottom:10px;margin-bottom:16px;}
+  #terminal-content{font-size:14px;line-height:1.8;white-space:pre-wrap;color:#b0ffcf;
+    max-height:55vh;overflow-y:auto;}
+  #terminal-footer{margin-top:20px;text-align:right;}
+
   /* Панель песочницы / превью тварей */
   #sandbox-panel{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(14,8,10,0.92);border:1px solid #6b2015;padding:8px 12px;display:flex;gap:6px;align-items:center;pointer-events:auto;z-index:8;border-radius:3px;box-shadow:0 0 18px rgba(0,0,0,0.85);max-width:96vw;overflow-x:auto;}
   .sb-btn{font-size:11px;padding:6px 10px;letter-spacing:1px;white-space:nowrap;}
@@ -140,7 +170,16 @@
   <div id="crosshair"><span class="l t"></span><span class="l b"></span><span class="l lf"></span><span class="l rt"></span><span class="dot"></span></div>
   <div id="hitmarker"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
 
-  <div id="top-left">
+  <!-- Интерактивный прицельный промпт для капсулы, дверей, терминалов и предметов -->
+  <div id="interaction-prompt" class="hidden">[E] ВЗАИМОДЕЙСТВИЕ</div>
+
+  <!-- Блок текущей сюжетной задачи на космическом корабле -->
+  <div id="objective-box">
+    <div id="objective-dot"></div>
+    <div id="objective-text">ЦЕЛЬ: ПОКИНУТЬ СТАЗИС-КАПСУЛУ [E / ПРОБЕЛ]</div>
+  </div>
+
+  <div id="top-left" class="hidden">
     <div id="wave-label">ВОЛНА 1</div>
     <div id="kills-label">УБИТО: 0</div>
     <div id="score-label">ОЧКИ: 0</div>
@@ -197,45 +236,45 @@
 <div id="damage-flash"></div>
 <div id="fade" style="position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:9;"></div>
 
+<!-- Всплывающий Sci-Fi ЭЛТ-Терминал данных -->
+<div id="terminal-screen" class="hidden">
+  <div id="terminal-box">
+    <div id="terminal-title">МЕДИЦИНСКИЙ ОТСЕК · ЗАПИСЬ Д-РА ЧЕН</div>
+    <div id="terminal-content"></div>
+    <div id="terminal-footer">
+      <button class="btn small" id="btn-terminal-close">[E / ESC] ЗАКРЫТЬ ТЕРМИНАЛ</button>
+    </div>
+  </div>
+</div>
+
 <div id="loading" class="screen">
-  <div class="title">ВОКСЕЛЬНАЯ <em>БОЙНЯ</em></div>
-  <div class="subtitle">ЗАГРУЗКА АССЕТОВ…</div>
+  <div class="title">ВОКСЕЛЬНЫЙ <em>ЭРЕБ</em></div>
+  <div class="subtitle">ИНИЦИАЛИЗАЦИЯ СТАЗИС-КАПСУЛЫ…</div>
   <div class="bar"><div></div></div>
 </div>
 
 <div id="menu" class="screen hidden">
-  <div class="title">ВОКСЕЛЬНАЯ <em>БОЙНЯ</em></div>
-  <div class="subtitle">ТАКТИЧЕСКИЙ ХОРРОР-ШУТЕР · ПРОТОТИП 0.2</div>
+  <div class="title">ВОКСЕЛЬНЫЙ <em>ЭРЕБ</em></div>
+  <div class="subtitle">КОСМИЧЕСКИЙ СУРВАЙВАЛ-ХОРРОР · СТАНЦИЯ «ЭРЕБ-7»</div>
   <div class="menu-btns">
     <!-- Выбор режима игры -->
-    <div style="background:rgba(0,0,0,0.5);border:1px solid #51190f;padding:10px 14px;border-radius:2px;text-align:center;">
+    <div style="background:rgba(0,0,0,0.55);border:1px solid #51190f;padding:12px 14px;border-radius:3px;text-align:center;">
       <div style="font-size:11px;letter-spacing:3px;color:#c9b8a0;margin-bottom:8px;font-weight:700;">РЕЖИМ ИГРЫ:</div>
       <div style="display:flex;gap:8px;">
-        <button class="btn small mode-btn active-tab" id="mode-waves" data-mode="waves" style="flex:1;">💀 БОЙ / ВОЛНЫ</button>
-        <button class="btn small mode-btn" id="mode-sandbox" data-mode="sandbox" style="flex:1;">🔬 ПЕСОЧНИЦА / ПРЕВЬЮ</button>
+        <button class="btn small mode-btn active-tab" id="mode-campaign" data-mode="campaign" style="flex:1;">🚀 КАМПАНИЯ: ЭРЕБ-7</button>
+        <button class="btn small mode-btn" id="mode-sandbox" data-mode="sandbox" style="flex:1;">🔬 ПЕСОЧНИЦА / ТЕСТ</button>
       </div>
-      <div id="mode-desc" style="font-size:11px;color:#a89985;margin-top:8px;line-height:1.4;">
-        Классическое выживание против нарастающих волн тварей.
-      </div>
-    </div>
-
-    <!-- Выбор карты -->
-    <div style="background:rgba(0,0,0,0.4);border:1px solid #51190f;padding:10px 14px;border-radius:2px;text-align:center;">
-      <div style="font-size:11px;letter-spacing:3px;color:#c9b8a0;margin-bottom:8px;font-weight:700;">ЛОКАЦИЯ:</div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn small map-btn active-tab" id="map-arena" data-map="arena" style="flex:1;">КОЛИЗЕЙ</button>
-        <button class="btn small map-btn" id="map-catacombs" data-map="catacombs" style="flex:1;">КАТАКОМБЫ</button>
-      </div>
-      <div id="map-desc" style="font-size:11px;color:#a89985;margin-top:8px;line-height:1.4;">
-        Классический открытый колизей с платформой, колоннами и порталами.
+      <div id="mode-desc" style="font-size:12px;color:#f0e0d0;margin-top:10px;line-height:1.5;">
+        Пробуждение в крио-капсуле на заражённом звездолёте «Эреб-7». Исследование медблока, сбор оружия, поиск ключ-карт, терминалы данных и запуск реактора.
       </div>
     </div>
 
-    <button class="btn primary" id="btn-play">НАЧАТЬ</button>
+    <!-- Основная кнопка старта -->
+    <button class="btn primary" id="btn-play" style="font-size:22px;padding:16px 28px;">🚀 НАЧАТЬ ИГРУ</button>
     <button class="btn" id="btn-settings">НАСТРОЙКИ</button>
-    <button class="btn" id="btn-help">УПРАВЛЕНИЕ</button>
+    <button class="btn" id="btn-help">УПРАВЛЕНИЕ И СЮЖЕТ</button>
   </div>
-  <div class="footnote">3D флюидная кровь · тактический ИИ с обходами · процедурные твари · синтезированный звук</div>
+  <div class="footnote">Звездолёт «Эреб-7» · 3D флюидная кровь · тактический ИИ · физика ящиков · синтезированный звук</div>
 </div>
 
 <div id="settings" class="screen overlay hidden">
