@@ -320,6 +320,11 @@ export class EnemyManager {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
 
+      const hasLegLoss = !!(e.severed.lLeg || e.severed.rLeg);
+      if (hasLegLoss && (e.state === 'chase' || e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate' || e.state === 'dummy_preview' || e.state === 'attack')) {
+        e.state = 'crawl_chase';
+      }
+
       if (e.flashT > 0) {
         e.flashT -= dt;
         if (e.flashT <= 0) for (const m of e.mats) m.emissive.setHex(0x000000);

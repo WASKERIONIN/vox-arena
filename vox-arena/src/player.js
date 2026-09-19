@@ -284,7 +284,14 @@ export class Player {
     this.pos.y += this.vel.y * dt;
 
     arena.clampCircle(this.pos, this.radius, this.pos.y, this.height);
-    const g = arena.groundTopAt(this.pos.x, this.pos.z, this.pos.y - this.vel.y * dt);
+    if (props && props.clampCircle) {
+      props.clampCircle(this.pos, this.radius, this.pos.y, this.height);
+    }
+
+    const gArena = arena.groundTopAt(this.pos.x, this.pos.z, this.pos.y - this.vel.y * dt);
+    const gProps = (props && props.groundTopAt) ? props.groundTopAt(this.pos.x, this.pos.z, this.pos.y - this.vel.y * dt) : 0;
+    const g = Math.max(gArena, gProps);
+
     if (this.pos.y <= g + 0.02 && this.vel.y <= 0) {
       if (!this.onGround && this.vel.y < -9) this.shake = Math.min(0.25, -this.vel.y * 0.012);
       this.pos.y = g; this.vel.y = 0; this.onGround = true;
@@ -624,7 +631,8 @@ export class Player {
       if (this.onHit) this.onHit({ head, killed: hitEnemy.hp <= 0, enemy: hitEnemy, hitZone, isCorpse });
     } else if (hitProp) {
       // Попадание по физическому ящику: урон + импульс + щепки
-      hitProp.damage(this.curWeapon.baseDamage + 4, point, dir, fx, sfx);
+      hitProp.damage(this.curWeapon.baseDamage + 6, point, dir, fx, sfx);
+      if (hud) hud.hitmarker(false);
     } else if (wHit) {
       fx.impact(point, wHit.normal);
     }

@@ -35,7 +35,7 @@ export class CrateProp {
   constructor(scene, T, x, y, z, sx = 1.4, sy = 1.4, sz = 1.4) {
     this.scene = scene;
     this.size = new THREE.Vector3(sx, sy, sz);
-    this.mass = Math.max(18, sx * sy * sz * 28.0); // 25-60 кг
+    this.mass = Math.max(20, sx * sy * sz * 28.0); // 25-60 кг
     this.invMass = 1.0 / this.mass;
 
     // Тензор инерции сплошного прямоугольного параллелепипеда (кубоида)
@@ -53,6 +53,7 @@ export class CrateProp {
     this.maxHp = 110;
     this.alive = true;
     this.resting = true;
+    this.stillTime = 0;
     this.soundCool = 0;
     this.slideSoundT = 0;
     this.radius = Math.hypot(sx, sy, sz) * 0.52; // радиус охватывающей сферы
@@ -60,19 +61,37 @@ export class CrateProp {
     // 8 локальных вершин ящика
     this.localCorners = UNIT_CORNERS.map(c => new THREE.Vector3(c.x * sx, c.y * sy, c.z * sz));
 
-    // 3D-модель деревянного ящика со скобами
+    // ========================================================================
+    // 3D-модель деревянного ящика (Без Z-файтинга и накладывающихся мешей)
+    // ========================================================================
     this.mesh = new THREE.Group();
-    const mat = new THREE.MeshLambertMaterial({ map: T.crate, color: 0xb4aa94, flatShading: true });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
-    this.mesh.add(box);
 
-    // Металлические угловые накладки / окантовка для PS1-детализации
-    const metalMat = new THREE.MeshLambertMaterial({ map: T.platform, color: 0x4a4a4e, flatShading: true });
-    const bTop = new THREE.Mesh(new THREE.BoxGeometry(sx * 1.02, 0.08, sz * 1.02), metalMat);
-    bTop.position.y = sy / 2 - 0.04;
-    const bBot = new THREE.Mesh(new THREE.BoxGeometry(sx * 1.02, 0.08, sz * 1.02), metalMat);
-    bBot.position.y = -sy / 2 + 0.04;
-    this.mesh.add(bTop, bBot);
+    // Основной деревянный куб
+    const matWood = new THREE.MeshLambertMaterial({ map: T.crate, color: 0xc4b49c, flatShading: true });
+    const woodBox = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), matWood);
+    this.mesh.add(woodBox);
+
+    // Металлические опоясывающие стальные стяжки по бокам (не перекрывают верхнюю и нижнюю крышки!)
+    const metalMat = new THREE.MeshLambertMaterial({ map: T.platform, color: 0x4a4a50, flatShading: true });
+    const strapH = Math.min(0.065, sy * 0.08);
+
+    // Верхняя боковая стяжка (расположена строго на боковых гранях)
+    const strapTop = new THREE.Mesh(new THREE.BoxGeometry(sx * 1.012, strapH, sz * 1.012), metalMat);
+    strapTop.position.y = sy * 0.32;
+    // Нижняя боковая стяжка
+    const strapBot = new THREE.Mesh(new THREE.BoxGeometry(sx * 1.012, strapH, sz * 1.012), metalMat);
+    strapBot.position.y = -sy * 0.32;
+    this.mesh.add(strapTop, strapBot);
+
+    // 4 вертикальных угловых металлических уголка
+    const cornerW = 0.06;
+    for (const cx of [-1, 1]) {
+      for (const cz of [-1, 1]) {
+        const cPillar = new THREE.Mesh(new THREE.BoxGeometry(cornerW, sy * 1.002, cornerW), metalMat);
+        cPillar.position.set(cx * (sx / 2 - cornerW / 3), 0, cz * (sz / 2 - cornerW / 3));
+        this.mesh.add(cPillar);
+      }
+    }
 
     this.mesh.position.copy(this.pos);
     this.mesh.quaternion.copy(this.quat);
@@ -82,6 +101,7 @@ export class CrateProp {
   // Приложение 3D-импульса в произвольную точку попадания (с крутящим моментом)
   applyImpulse(hitPoint, impulseVec, isKick = false) {
     this.resting = false;
+    this.stillTime = 0;
 
     // Линейное ускорение
     this.vel.addScaledVector(impulseVec, this.invMass);
@@ -95,10 +115,10 @@ export class CrateProp {
 
     if (isKick) {
       // Пинок ногой добавляет мощное кувыркание в воздухе
-      this.angVel.x += rand(-3.5, 3.5);
-      this.angVel.y += rand(-4.0, 4.0);
-      this.angVel.z += rand(-3.5, 3.5);
-      this.vel.y += rand(2.4, 4.2);
+      this.angVel.x += rand(-4.5, 4.5);
+      this.angVel.y += rand(-5.0, 5.0);
+      this.angVel.z += rand(-4.5, 4.5);
+      this.vel.y += rand(2.8, 4.8);
     }
   }
 
@@ -106,6 +126,7 @@ export class CrateProp {
     if (!this.alive) return;
     this.hp -= amt;
     this.resting = false;
+    this.stillTime = 0;
 
     // Щепки и эффект попадания по дереву
     if (fx) {
@@ -114,8 +135,8 @@ export class CrateProp {
     }
     if (sfx) sfx.woodHit();
 
-    // Физический сдвиг и крутящий момент от кинетической энергии пули
-    const pushForce = Math.min(38, amt * 0.42);
+    // Чувствительный, смачный кинетический импульс от попадания пуль / дроби
+    const pushForce = Math.max(34, amt * 1.85);
     this.applyImpulse(hitPoint, shotDir.clone().multiplyScalar(pushForce));
 
     if (this.hp <= 0) {
@@ -161,7 +182,7 @@ export class CrateProp {
     // 4. Проверка и разрешение контактов 8 вершин куба с поверхностью пола / ступенями
     let contactsCount = 0;
     let maxPenetration = 0;
-    let groundNormal = new THREE.Vector3(0, 1, 0);
+    const groundNormal = new THREE.Vector3(0, 1, 0);
 
     const normalTorqueArm = new THREE.Vector3();
     const invInertiaTorque = new THREE.Vector3();
@@ -187,10 +208,10 @@ export class CrateProp {
         applyInvInertia(normalTorqueArm, this.quat, this.invInertiaBody, invInertiaTorque);
         const Kn = this.invMass + invInertiaTorque.dot(normalTorqueArm);
 
-        // Коэффициент упругости отскока (только при высокой скорости)
-        const restitution = vn < -1.2 ? 0.22 : 0.0;
+        // Коэффициент упругости отскока
+        const restitution = vn < -1.4 ? 0.24 : 0.0;
         const bias = Math.min(3.5, penetration * 24.0);
-        let jn = (-(1.0 + restitution) * vn + bias) / Math.max(1e-5, Kn);
+        const jn = (-(1.0 + restitution) * vn + bias) / Math.max(1e-5, Kn);
 
         if (jn > 0) {
           // Применяем нормальный импульс
@@ -209,7 +230,7 @@ export class CrateProp {
             this.soundCool = 0.16;
           }
 
-          // Трение Кулона (Friction) о пол в тангенциальном направлении
+          // Трение Кулона (Coulomb Friction) о пол в тангенциальном направлении
           const vTangent = vCorner.clone().sub(groundNormal.clone().multiplyScalar(vn));
           const vt = vTangent.length();
 
@@ -252,18 +273,23 @@ export class CrateProp {
     }
 
     // 5. Успокоение и перевод в стабильный покой (Resting State)
-    if (contactsCount >= 3 && horizSpd < 0.06 && Math.abs(this.vel.y) < 0.08 && this.angVel.length() < 0.12) {
-      this.vel.set(0, 0, 0);
-      this.angVel.set(0, 0, 0);
+    if (contactsCount >= 3 && horizSpd < 0.08 && Math.abs(this.vel.y) < 0.1 && this.angVel.length() < 0.15) {
+      this.stillTime += dt;
+      if (this.stillTime > 0.28) {
+        this.vel.set(0, 0, 0);
+        this.angVel.set(0, 0, 0);
 
-      // Естественное выравнивание на ближайшую грань куба
-      const euler = new THREE.Euler().setFromQuaternion(this.quat, 'YXZ');
-      const snap = a => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
-      euler.x = snap(euler.x);
-      euler.z = snap(euler.z);
-      this.quat.setFromEuler(euler);
+        // Естественное выравнивание на ближайшую грань куба
+        const euler = new THREE.Euler().setFromQuaternion(this.quat, 'YXZ');
+        const snap = a => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
+        euler.x = snap(euler.x);
+        euler.z = snap(euler.z);
+        this.quat.setFromEuler(euler);
 
-      this.resting = true;
+        this.resting = true;
+      }
+    } else {
+      this.stillTime = 0;
     }
   }
 
@@ -317,26 +343,14 @@ export class CrateProp {
       }
     }
 
-    // Толкание ящика игроком при ходьбе
+    // Если игрок стоит на ящике, прижимаем ящик к полу
     if (player) {
-      const pdx = this.pos.x - player.pos.x;
-      const pdz = this.pos.z - player.pos.z;
-      const pDist2 = pdx * pdx + pdz * pdz;
-      const pushR = this.radius * 0.8 + player.radius + 0.05;
-
-      if (pDist2 < pushR * pushR && Math.abs(player.pos.y - this.pos.y) < 1.4) {
-        const pDist = Math.sqrt(pDist2) || 0.001;
-        const nx = pdx / pDist;
-        const nz = pdz / pDist;
-        const overlap = pushR - pDist;
-
-        // Игрок сдвигает ящик с места
-        this.pos.x += nx * overlap * 0.65;
-        this.pos.z += nz * overlap * 0.65;
-        this.vel.x += nx * 2.8;
-        this.vel.z += nz * 2.8;
-        this.angVel.y += (Math.random() - 0.5) * 1.5;
-        this.resting = false;
+      const topY = this.pos.y + this.size.y * 0.5;
+      const onTop = Math.abs(player.pos.x - this.pos.x) < this.size.x * 0.55 &&
+                    Math.abs(player.pos.z - this.pos.z) < this.size.z * 0.55 &&
+                    Math.abs(player.pos.y - topY) < 0.12;
+      if (onTop) {
+        if (this.vel.y > 0) this.vel.y = 0;
       }
     }
 
@@ -366,20 +380,84 @@ export class PropsManager {
     this.list.length = 0;
   }
 
-  // Точный Raycast по ориентированному ящику (Oriented Bounding Box)
+  // Расчёт высоты верхней плоскости ящика под ногами игрока для возможности запрыгивания
+  groundTopAt(x, z, footY) {
+    let best = 0;
+    for (const p of this.list) {
+      if (!p.alive) continue;
+      const topY = p.pos.y + p.size.y * 0.5;
+      const hx = p.size.x * 0.52;
+      const hz = p.size.z * 0.52;
+
+      // Проверка нахождения игрока в горизонтальных границах ящика
+      if (x >= p.pos.x - hx && x <= p.pos.x + hx && z >= p.pos.z - hz && z <= p.pos.z + hz) {
+        if (topY <= footY + 0.75 && topY > best) {
+          best = topY;
+        }
+      }
+    }
+    return best;
+  }
+
+  // Предотвращение прохождения игрока сквозь боковые стенки ящиков + плавное толкание
+  clampCircle(pos, radius, footY, height) {
+    for (const p of this.list) {
+      if (!p.alive) continue;
+      const topY = p.pos.y + p.size.y * 0.5;
+      const botY = p.pos.y - p.size.y * 0.5;
+
+      // Если игрок стоит на крышке ящика сверху, боковая коллизия не нужна
+      if (footY >= topY - 0.18) continue;
+      // Если игрок ниже ящика
+      if (footY + height <= botY) continue;
+
+      const hx = p.size.x * 0.5;
+      const hz = p.size.z * 0.5;
+
+      const nx = Math.max(p.pos.x - hx, Math.min(pos.x, p.pos.x + hx));
+      const nz = Math.max(p.pos.z - hz, Math.min(pos.z, p.pos.z + hz));
+      const dx = pos.x - nx;
+      const dz = pos.z - nz;
+      const d2 = dx * dx + dz * dz;
+
+      if (d2 < radius * radius) {
+        const d = Math.sqrt(d2) || 0.001;
+        const push = (radius - d) / d;
+        const pushX = dx * push;
+        const pushZ = dz * push;
+
+        // Выталкиваем игрока
+        pos.x += pushX;
+        pos.z += pushZ;
+
+        // Мягко передаем импульс движения тяжелому ящику (без взлетов и запусков!)
+        p.vel.x -= (dx / d) * 1.8;
+        p.vel.z -= (dz / d) * 1.8;
+        p.resting = false;
+        p.stillTime = 0;
+      }
+    }
+  }
+
+  // Высокоточный Raycast по ориентированному ящику (Oriented Bounding Box)
   raycast(origin, dir, maxDist) {
     let bestHit = null;
     let bestDist = maxDist;
 
     for (const p of this.list) {
       if (!p.alive) continue;
-      // Быстрая сфера
-      const toProp = p.pos.clone().sub(origin);
-      const proj = toProp.dot(dir);
-      if (proj < 0 || proj > bestDist + p.radius) continue;
 
-      const perp2 = toProp.lengthSq() - proj * proj;
-      if (perp2 > p.radius * p.radius) continue;
+      const toProp = p.pos.clone().sub(origin);
+      const distToCenterSq = toProp.lengthSq();
+      const radiusSq = (p.radius + 0.2) * (p.radius + 0.2);
+
+      const proj = toProp.dot(dir);
+      if (distToCenterSq > radiusSq && proj < 0) continue;
+      if (proj > bestDist + p.radius) continue;
+      if (distToCenterSq > radiusSq) {
+        const perp2 = distToCenterSq - proj * proj;
+        if (perp2 > radiusSq) continue;
+      }
 
       // Точная проверка OBB через инверсию кватерниона
       const invQuat = p.quat.clone().invert();
@@ -411,7 +489,7 @@ export class PropsManager {
         }
       }
 
-      if (ok && tmin > 0.01 && tmin < bestDist) {
+      if (ok && tmin > 0.001 && tmin < bestDist) {
         bestDist = tmin;
         const worldHitPoint = origin.clone().addScaledVector(dir, tmin);
 
@@ -491,6 +569,8 @@ export class PropsManager {
 
             a.resting = false;
             b.resting = false;
+            a.stillTime = 0;
+            b.stillTime = 0;
 
             if (Math.abs(vn) > 1.2 && sfx) {
               sfx.crateThud(Math.abs(vn));

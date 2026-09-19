@@ -1025,14 +1025,16 @@ function poseCrawl(e, dt, t, P, type) {
   const j = e.j;
   const isWarrior = (type === 'warrior');
   const isRogue = (type === 'rogue');
+  const isZombie = (type === 'zombie');
 
-  e.phase += dt * (P.freq * 0.75);
+  const crawlFreq = isZombie ? 2.4 : (P.freq * 0.75);
+  e.phase += dt * crawlFreq;
   const p = e.phase;
   const s = Math.sin(p), c = Math.cos(p);
   const spasmAmp = e.spasm > 0 ? Math.sin(t * 36) * e.spasm : 0;
 
   // 1. Позиция таза и подъем груди на локтях/руках
-  const pelvisY = isWarrior ? 0.28 : 0.20;
+  const pelvisY = isWarrior ? 0.28 : (isZombie ? 0.18 : 0.20);
   e.root.position.set(0, 0, 0);
 
   if (j.pelvis) {
@@ -1042,7 +1044,11 @@ function poseCrawl(e, dt, t, P, type) {
 
   if (j.spine) {
     // Позвоночник плавно выгибается вверх
-    j.spine.rotation.set(-0.15 + c * 0.04, s * 0.3, -c * 0.18 + spasmAmp * 0.2);
+    if (isZombie) {
+      j.spine.rotation.set(-0.12 + c * 0.03, s * 0.2, 0.04 + spasmAmp * 0.15);
+    } else {
+      j.spine.rotation.set(-0.15 + c * 0.04, s * 0.3, -c * 0.18 + spasmAmp * 0.2);
+    }
   }
 
   if (j.chest) {
@@ -1051,23 +1057,61 @@ function poseCrawl(e, dt, t, P, type) {
   }
 
   if (j.neck) {
-    j.neck.rotation.set(-0.75, 0, 0);
+    if (isZombie) {
+      j.neck.rotation.set(-0.65, 0.12, 0.35 + spasmAmp * 0.1);
+    } else {
+      j.neck.rotation.set(-0.75, 0, 0);
+    }
   }
 
   if (j.head && !e.severed?.head) {
     // Голова смотрит прямо на игрока
-    j.head.rotation.set(-0.75 + Math.abs(s) * 0.12, c * 0.15 + (e.tilt || 0), s * 0.08);
+    if (isZombie) {
+      j.head.rotation.set(-0.68 + Math.abs(s) * 0.08, -0.08 + (e.tilt || 0), 0.22 + s * 0.06);
+    } else {
+      j.head.rotation.set(-0.75 + Math.abs(s) * 0.12, c * 0.15 + (e.tilt || 0), s * 0.08);
+    }
   }
 
   if (j.jaw) {
-    j.jaw.rotation.x = -0.25 - Math.max(0, Math.sin(t * 8)) * 0.35;
+    if (isZombie) {
+      j.jaw.rotation.set(-0.35 - Math.max(0, Math.sin(t * 6)) * 0.25, 0.15, 0.18);
+    } else {
+      j.jaw.rotation.x = -0.25 - Math.max(0, Math.sin(t * 8)) * 0.35;
+    }
   }
 
   // 2. Руки загребают по поверхности пола, не опускаясь ниже плоскости арены
   const hasLArm = !e.severed?.lArm;
   const hasRArm = !e.severed?.rArm;
 
-  if (hasLArm && hasRArm) {
+  if (isZombie) {
+    // У зомби левая рука — основная загребающая, правая — слабая/вывихнутая
+    if (hasLArm && hasRArm) {
+      if (j.lShoulder) {
+        const lReach = -1.25 - s * 0.45;
+        j.lShoulder.rotation.set(lReach, 0.25 + c * 0.12, -0.25);
+        if (j.lElbow) j.lElbow.rotation.set(-0.3 - Math.max(0, s) * 0.7, 0, 0);
+      }
+      if (j.rShoulder) {
+        const rReach = -0.85 + s * 0.3;
+        j.rShoulder.rotation.set(rReach, -0.2 - c * 0.1, 0.35);
+        if (j.rElbow) j.rElbow.rotation.set(-0.25 - Math.max(0, -s) * 0.5, 0, 0);
+      }
+    } else if (hasLArm) {
+      if (j.lShoulder) {
+        j.lShoulder.rotation.set(-1.25 - s * 0.5, 0.3, -0.3);
+        if (j.lElbow) j.lElbow.rotation.set(-0.35 - Math.max(0, s) * 0.8, 0, 0);
+      }
+      if (j.spine) j.spine.rotation.y = s * 0.35;
+    } else if (hasRArm) {
+      if (j.rShoulder) {
+        j.rShoulder.rotation.set(-1.1 + s * 0.45, -0.3, 0.3);
+        if (j.rElbow) j.rElbow.rotation.set(-0.3 - Math.max(0, -s) * 0.7, 0, 0);
+      }
+      if (j.spine) j.spine.rotation.y = -s * 0.35;
+    }
+  } else if (hasLArm && hasRArm) {
     // Левая рука: вынос вперед и гребок
     if (j.lShoulder) {
       const lReach = -1.15 - s * 0.45;
@@ -1276,24 +1320,30 @@ export function poseMonster(e, dt, t) {
   organs(e, dt, t);
   const P = WALK[type] || WALK.minion;
 
-  switch (e.state) {
-    case 'spawn': poseSpawn(e, dt, t); break;
-    case 'dummy_preview':
-    case 'dummy_idle': poseIdle(e, dt, t, P, type); break;
-    case 'dummy_walk':
-    case 'patrol':
-    case 'wander':
-    case 'investigate':
-    case 'chase': poseWalk(e, dt, t, P, type); break;
-    case 'attack': poseAttack(e, t, P, type); break;
-    case 'headless_rampage': poseHeadlessRampage(e, dt, t, P, type); break;
-    case 'crawl_chase':
-    case 'crawl_attack': poseCrawl(e, dt, t, P, type); break;
-    case 'getup':
-    case 'crawl_getup': poseGetup(e, dt, t, P, type); break;
-    case 'corpse_ragdoll': poseCorpse(e, dt, t); break;
-    case 'dying': poseDeath(e, dt, t); break;
-    default: poseIdle(e, dt, t, P, type);
+  const hasSeveredLeg = !!(e.severed?.lLeg || e.severed?.rLeg);
+
+  if (hasSeveredLeg && (e.state === 'chase' || e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate' || e.state === 'dummy_preview' || e.state === 'dummy_idle' || e.state === 'dummy_walk')) {
+    poseCrawl(e, dt, t, P, type);
+  } else {
+    switch (e.state) {
+      case 'spawn': poseSpawn(e, dt, t); break;
+      case 'dummy_preview':
+      case 'dummy_idle': poseIdle(e, dt, t, P, type); break;
+      case 'dummy_walk':
+      case 'patrol':
+      case 'wander':
+      case 'investigate':
+      case 'chase': poseWalk(e, dt, t, P, type); break;
+      case 'attack': poseAttack(e, t, P, type); break;
+      case 'headless_rampage': poseHeadlessRampage(e, dt, t, P, type); break;
+      case 'crawl_chase':
+      case 'crawl_attack': poseCrawl(e, dt, t, P, type); break;
+      case 'getup':
+      case 'crawl_getup': poseGetup(e, dt, t, P, type); break;
+      case 'corpse_ragdoll': poseCorpse(e, dt, t); break;
+      case 'dying': poseDeath(e, dt, t); break;
+      default: poseIdle(e, dt, t, P, type);
+    }
   }
 
   // Физический флинч от пуль к позвоночнику и груди
