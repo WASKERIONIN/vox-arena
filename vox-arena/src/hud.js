@@ -344,7 +344,13 @@ export class HUD {
     }
   }
 
-  setAmmo(n, size, reloading, isShotgun = false) {
+  setAmmo(n, size, reloading, isShotgun = false, unarmed = false) {
+    if (unarmed) {
+      if (this.els['ammo-num']) this.els['ammo-num'].textContent = '--';
+      if (this.els['ammo-mag']) this.els['ammo-mag'].textContent = '/ --';
+      if (this.els['reload-note']) this.els['reload-note'].textContent = 'НАЙДИТЕ ОРУЖИЕ В МЕДБЛОКЕ';
+      return;
+    }
     if (this.els['ammo-num']) this.els['ammo-num'].textContent = n;
     if (this.els['ammo-mag']) this.els['ammo-mag'].textContent = '/ ' + (isShotgun ? '2' : '30');
     if (this.els['reload-note']) {
@@ -356,9 +362,13 @@ export class HUD {
     if (this.els['slot-1']) this.els['slot-1'].classList.toggle('active', slotIndex === 0);
     if (this.els['slot-2']) this.els['slot-2'].classList.toggle('active', slotIndex === 1);
     if (this.els['weapon-name']) {
-      this.els['weapon-name'].textContent = slotIndex === 0
-        ? 'ШТУРМОВОЙ АВТОМАТ «СЕКТОР-9» · 6.8 ММ'
-        : 'ДВУСТВОЛЬНЫЙ ОБРЕЗ «ПАЛАЧ» · 12 КАЛИБР';
+      if (slotIndex === 0) {
+        this.els['weapon-name'].textContent = 'ШТУРМОВОЙ АВТОМАТ «СЕКТОР-9» · 6.8 ММ';
+      } else if (slotIndex === 1) {
+        this.els['weapon-name'].textContent = 'ДВУСТВОЛЬНЫЙ ОБРЕЗ «ПАЛАЧ» · 12 КАЛИБР';
+      } else {
+        this.els['weapon-name'].textContent = 'БЕЗ ОРУЖИЯ (F — БОЕВОЙ ПИНОК)';
+      }
     }
   }
 

@@ -305,25 +305,28 @@ function startRun(selectedMap = 'starship', mode = 'campaign') {
 
   if (mode === 'campaign') {
     // Начальная позиция: внутри стазис-капсулы 04
-    player.reset(0, 0.4, 0, 0);
+    player.reset(0, 0.4, 0, 0, 'campaign');
     arena.populateEnemies(enemies);
     hud.setObjective(arena.currentObjective);
     hud.setHP(player.hp, player.maxHp);
-    hud.setAmmo(player.mag, player.magSize, false, false);
-    hud.setWeaponSlot(0);
-    hud.setFlashlight(true);
+    hud.setAmmo(0, 0, false, false, true);
+    hud.setWeaponSlot(-1);
+    hud.setFlashlight(false);
 
     sfx.heartbeat();
     hud.banner('СТАНЦИЯ «ЭРЕБ-7»', 'АВАРИЙНЫЙ СБРОС СТАЗИС-КАПСУЛЫ [E / ПРОБЕЛ]');
-    hud.hint('E / ПРОБЕЛ — открыть капсулу · E — взаимодействие · ЛКМ — огонь · F/ПКМ — пинок · T — фонарь');
+    hud.hint('E / ПРОБЕЛ — открыть капсулу · E — взаимодействие · F/ПКМ — пинок · T — фонарь');
   } else {
     // РЕЖИМ ПЕСОЧНИЦЫ / БЕСТИАРИЙ
     const spawn = arena.mapDef ? arena.mapDef.playerSpawn : { x: 0, y: 0, z: 16, yaw: 0 };
-    player.reset(spawn.x, spawn.y, spawn.z, spawn.yaw);
+    player.reset(spawn.x, spawn.y, spawn.z, spawn.yaw, 'sandbox');
     waves.state = 'idle';
     hud.countdown(0, 0);
     hud.setSandboxAIToggle(hud.aiEnabledInSandbox);
     enemies.spawn('zombie', 0, 0, 1, !hud.aiEnabledInSandbox);
+    hud.setHP(player.hp, player.maxHp);
+    hud.setAmmo(player.mag, player.magSize, false, false, false);
+    hud.setWeaponSlot(0);
     hud.banner('ПЕСОЧНИЦА АКТИВИРОВАНА', 'КЛАВИШИ 4-8: СПАВН · 9: ИИ ВКЛ/ВЫКЛ · 0: ОЧИСТИТЬ');
     hud.hint('Клавиши 4-8 — спавн тварей · 9 — вкл/выкл ИИ · 0 — очистить · 1/2 — оружие · F — пинок');
   }
@@ -392,13 +395,15 @@ function frame(now) {
     if (arena.checkInteraction) {
       const fwd = new THREE.Vector3();
       camera.getWorldDirection(fwd);
-      const target = arena.checkInteraction(player.pos, fwd, 2.8);
+      const target = arena.checkInteraction(player.pos, fwd, 3.6);
       if (target) {
         const promptText = typeof target.prompt === 'function' ? target.prompt() : target.prompt;
         hud.setInteractionPrompt(promptText);
-        if (input.keys.has('KeyE') || (target.type === 'cryo_pod' && input.jump)) {
+        const wantsInteract = input.keys.has('KeyE') || (!arena.podOpened && (input.jump || input.keys.has('Space')));
+        if (wantsInteract) {
           input.keys.delete('KeyE');
-          if (target.type === 'cryo_pod') input.jump = false;
+          input.keys.delete('Space');
+          input.jump = false;
           target.onUse(player, arena, sfx, hud, fx);
         }
       } else {
@@ -418,7 +423,8 @@ function frame(now) {
     fx.update(dt, arena);
     stylePts = Math.max(0, stylePts - 55 * dt);
     hud.setHP(player.hp, player.maxHp);
-    hud.setAmmo(player.mag, player.magSize, player.reloading, player.curSlot === 1);
+    hud.setAmmo(player.mag, player.magSize, player.reloading, player.curSlot === 1, player.curSlot < 0);
+    hud.setWeaponSlot(player.curSlot);
     hud.setStyle(stylePts);
   } else if (state === 'menu') {
     const a = time * 0.12;
