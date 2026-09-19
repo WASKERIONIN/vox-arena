@@ -319,6 +319,7 @@ export class EnemyManager {
 
   update(dt, player, arena) {
     this.time += dt;
+    this.arena = arena;
     const t = this.time, fx = this.fx, sfx = this.sfx;
 
     // Обновление отстреленных конечностей
@@ -365,7 +366,7 @@ export class EnemyManager {
 
       // ======================================================================
       // ПРОВЕРКА ПРЯМОЙ ВИДИМОСТИ (Line of Sight) И СЕНСОРНОЕ ВОСПРИЯТИЕ
-      // Никакого «магнита» сквозь стены!
+      // Враги видят игрока ТОЛЬКО при прямой видимости без стен и закрытых дверей!
       // ======================================================================
       const dx = player.pos.x - e.pos.x, dz = player.pos.z - e.pos.z;
       const dist = Math.hypot(dx, dz);
@@ -376,24 +377,21 @@ export class EnemyManager {
       const originRay = _v.set(e.pos.x, eyeY, e.pos.z);
       const dirRay = _v2.set(dx, targetEyeY - eyeY, dz).normalize();
 
-      // Проверка лучом через геометрию стен карты
+      // Строгая проверка лучом через геометрию стен и дверей
       const wallHit = arena.raycastWorld(originRay, dirRay, dist);
-      const clearLOS = (!wallHit || wallHit.dist >= dist - 0.4);
+      const clearLOS = (!wallHit || wallHit.dist >= dist - 0.35);
 
       // Вектор текущего направления взгляда монстра
       const currentFacingX = Math.sin(e.group.rotation.y);
       const currentFacingZ = Math.cos(e.group.rotation.y);
       const dotVision = (nx * currentFacingX + nz * currentFacingZ);
 
-      // Условия обнаружения игрока:
-      // 1) Прямой взгляд (конус зрения ~130 градусов, dot > -0.2) + дистанция
-      // 2) Если у игрока включен фонарик — монстры замечают свет с большей дистанции (до 30м)
-      // 3) Ближняя зона слуха (шаги/дыхание в упор < 3.2м) даже со спины
-      let maxVisionRange = player.flashlightOn ? 30.0 : 20.0;
-      if (arena.mapId === 'catacombs' && !player.flashlightOn) maxVisionRange = 14.0;
+      // Конус зрения: четкие 140 градусов спереди (dotVision > 0.15)
+      let maxVisionRange = player.flashlightOn ? 26.0 : 18.0;
+      if (arena.mapId === 'catacombs' && !player.flashlightOn) maxVisionRange = 12.0;
 
-      const inVisionCone = dotVision > -0.2;
-      const canSeePlayer = clearLOS && ((inVisionCone && dist < maxVisionRange) || (dist < 3.2));
+      const inVisionCone = dotVision > 0.15;
+      const canSeePlayer = clearLOS && ((inVisionCone && dist < maxVisionRange) || (dist < 1.6));
 
       if (canSeePlayer) {
         e.hasLOS = true;
@@ -747,29 +745,30 @@ export class EnemyManager {
   }
 
   // ==========================================================================
-  // Движение с поворотом корпуса точно по вектору пути (НИКАКИХ СТРЕЙФОВ БОКОМ!)
+  // Движение с поворотом корпуса точно по вектору пути (Умный обход препятствий)
   // ==========================================================================
   _moveAndOrient(e, wishX, wishZ, speed, dt, arena) {
-    const probe = 0.85 + e.T.radius;
+    const probe = 0.95 + e.T.radius;
 
     const isBlocked = (x, z) => {
-      if (Math.abs(x) > 33.0 || Math.abs(z) > 33.0) return true;
-      for (const c of arena.colliders) {
-        if (c.max.y - e.pos.y <= 0.7) continue;
-        if (e.pos.y + e.T.height < c.min.y) continue;
-        if (x > c.min.x - e.T.radius && x < c.max.x + e.T.radius &&
-            z > c.min.z - e.T.radius && z < c.max.z + e.T.radius) return true;
+      if (arena.colliders) {
+        for (const c of arena.colliders) {
+          if (c.max.y - e.pos.y <= 0.7) continue;
+          if (e.pos.y + e.T.height < c.min.y) continue;
+          if (x > c.min.x - e.T.radius && x < c.max.x + e.T.radius &&
+              z > c.min.z - e.T.radius && z < c.max.z + e.T.radius) return true;
+        }
       }
       return false;
     };
 
     let dirx = wishX, dirz = wishZ;
 
-    // Усики-щупы для обхода дверных проемов и углов
+    // Усики-щупы для плавного обхода дверных проемов, переборок и углов
     if ((wishX || wishZ) && isBlocked(e.pos.x + dirx * probe, e.pos.z + dirz * probe)) {
       const baseAng = Math.atan2(wishZ, wishX);
       let found = false;
-      for (const s of [0.55, -0.55, 1.1, -1.1, 1.6, -1.6, 2.2, -2.2]) {
+      for (const s of [0.45, -0.45, 0.9, -0.9, 1.35, -1.35, 1.8, -1.8]) {
         const a = baseAng + s * (e.strafeDir || 1);
         const tx = Math.cos(a), tz = Math.sin(a);
         if (!isBlocked(e.pos.x + tx * probe, e.pos.z + tz * probe)) {
@@ -779,16 +778,20 @@ export class EnemyManager {
         }
       }
       if (!found) {
-        dirx = -wishX; dirz = -wishZ;
+        // Если зажат в угол, разворачиваемся и меняем направление обхода
+        dirx = -wishX * 0.5;
+        dirz = -wishZ * 0.5;
         e.strafeDir *= -1;
       }
     }
+
+    const prevX = e.pos.x, prevZ = e.pos.z;
 
     // Перемещение
     e.pos.x += dirx * speed * dt;
     e.pos.z += dirz * speed * dt;
 
-    // ПОВОРОТ КОРПУСА: Монстр ВСЕГДА разворачивается лицом по ходу своего движения!
+    // ПОВОРОТ КОРПУСА: Монстр ВСЕГДА разворачивается лицом по ходу своего движения
     if (Math.hypot(dirx, dirz) > 0.01) {
       const targetFacing = Math.atan2(dirx, dirz);
       let diff = targetFacing - e.group.rotation.y;
@@ -803,6 +806,14 @@ export class EnemyManager {
     this._separate(e);
 
     arena.clampCircle(e.pos, e.T.radius, e.pos.y, e.T.height);
+
+    // Если монстр уперся в стену и не может продвинуться, сбрасываем цель патруля
+    const actualMoved = Math.hypot(e.pos.x - prevX, e.pos.z - prevZ);
+    if (actualMoved < speed * dt * 0.15 && (e.state === 'patrol' || e.state === 'wander')) {
+      const hp = e.homePos || e.pos;
+      e.patrolTarget.set(hp.x + rand(-3.0, 3.0), 0, hp.z + rand(-3.0, 3.0));
+      e.patrolWaitT = rand(1.0, 2.5);
+    }
 
     const g = arena.groundTopAt(e.pos.x, e.pos.z, e.pos.y + 0.5);
     e.pos.y = g;
@@ -1054,7 +1065,7 @@ export function attachEnemyDamage(e, mgr, hooks) {
       if (e.state === 'patrol' || e.state === 'wander' || e.state === 'investigate') {
         e.state = 'chase';
       }
-      mgr.alertSound(point || e.pos, 20);
+      mgr.alertSound(point || e.pos, 20, mgr.arena);
     }
 
     if (e.state === 'corpse_ragdoll') {

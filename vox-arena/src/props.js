@@ -52,7 +52,7 @@ export class CrateProp {
     this.hp = 110;
     this.maxHp = 110;
     this.alive = true;
-    this.resting = true;
+    this.resting = false; // На старте проходит 2 кадра физического укоренения на полу
     this.stillTime = 0;
     this.soundCool = 0;
     this.slideSoundT = 0;

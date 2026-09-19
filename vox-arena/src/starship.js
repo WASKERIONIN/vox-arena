@@ -85,15 +85,21 @@ export class StarshipLevel {
     const T = this.T;
     const lam = (map, color = 0xffffff, extra = {}) => new THREE.MeshLambertMaterial({ map, color, ...extra });
 
-    const hullMat = lam(T.hull, 0xa0a8b4);
-    const wallMat = lam(T.wall, 0x888c94);
-    const grateMat = lam(T.grate, 0x78808a);
-    const platMat = lam(T.platform, 0x6a707a);
-    const darkMetal = lam(T.platform, 0x30343a);
-    const hazardMat = lam(T.hazard, 0xcca020);
-    const bulkheadMat = lam(T.bulkhead, 0x9098a0);
+    const hullMat = lam(T.hull, 0x9ca4b0);
+    const wallMat = lam(T.wall, 0x8a9098);
+    const grateMat = lam(T.grate, 0x7c848e);
+    const platMat = lam(T.platform, 0x6e747e);
+    const darkMetal = lam(T.platform, 0x363a42);
+    const hazardMat = lam(T.hazard, 0xd4a822);
+    const bulkheadMat = lam(T.bulkhead, 0x949ca6);
     const screenMat = new THREE.MeshBasicMaterial({ map: T.screen });
-    const cryoGlassMat = new THREE.MeshBasicMaterial({ map: T.cryoGlass, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    const cryoGlassMat = new THREE.MeshBasicMaterial({
+      map: T.cryoGlass,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
 
     // Окружающий космос и туманность вокруг корабля
     const spaceSphere = new THREE.Mesh(
@@ -103,14 +109,34 @@ export class StarshipLevel {
     this.scene.add(spaceSphere);
     this.meshes.push(spaceSphere);
 
-    // Базовый эмбиентный свет космической станции
-    const amb = new THREE.AmbientLight(0x18121a, 0.45);
+    // ========================================================================
+    // ОСВЕЩЕНИЕ СТАНЦИИ: Яркая, четкая видимость с атмосферой научной фантастики
+    // ========================================================================
+    const amb = new THREE.AmbientLight(0x283240, 0.95);
     this.scene.add(amb);
     this.lights.push(amb);
 
-    const hemi = new THREE.HemisphereLight(0x354050, 0x10080c, 0.45);
+    const hemi = new THREE.HemisphereLight(0x405068, 0x182028, 0.72);
     this.scene.add(hemi);
     this.lights.push(hemi);
+
+    // Вспомогательная функция для потолочных неоновых ламп дневного света
+    const addCeilingLamp = (x, y, z, color = 0xd8eeff, intensity = 18, dist = 14) => {
+      const lampHousing = this._addBox(x, y - 0.08, z, 1.4, 0.12, 0.4, darkMetal, { collide: false });
+      const lampBulb = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.04, 0.24),
+        new THREE.MeshBasicMaterial({ color })
+      );
+      lampBulb.position.set(x, y - 0.14, z);
+      this.scene.add(lampBulb);
+      this.meshes.push(lampBulb);
+
+      const light = new THREE.PointLight(color, intensity, dist, 1.4);
+      light.position.set(x, y - 0.25, z);
+      this.scene.add(light);
+      this.lights.push(light);
+      return light;
+    };
 
     // ========================================================================
     // 1. СЕКТОР 01: СТАЗИС-ОТСЕК И МЕДБЛОК (CRYO-BAY) [X: -8..8, Z: -8..8, Y: 0..4.4]
@@ -120,20 +146,29 @@ export class StarshipLevel {
     this._addBox(0, 4.4, 0, 16, 0.4, 16, darkMetal, { collide: false });
 
     // Стены медблока (Север, Запад, Восток)
-    this._addBox(0, 0, -8, 16, 4.4, 0.6, hullMat, { texRepeat: [4, 1] });
-    this._addBox(-8, 0, 0, 0.6, 4.4, 16, hullMat, { texRepeat: [4, 1] });
-    this._addBox(8, 0, 0, 0.6, 4.4, 16, hullMat, { texRepeat: [4, 1] });
+    this._addBox(0, 0, -8, 16, 4.4, 0.8, hullMat, { texRepeat: [4, 1] });
+    this._addBox(-8, 0, 0, 0.8, 4.4, 16, hullMat, { texRepeat: [4, 1] });
+    this._addBox(8, 0, 0, 0.8, 4.4, 16, hullMat, { texRepeat: [4, 1] });
 
-    // Южная стена медблока с дверным проемом шириной 4.0м в шлюз на Z = 8
-    this._addBox(-5.0, 0, 8, 6.0, 4.4, 0.6, hullMat);
-    this._addBox(5.0, 0, 8, 6.0, 4.4, 0.6, hullMat);
-    this._addBox(0, 3.2, 8, 4.0, 1.2, 0.6, hazardMat);
+    // Южная стена медблока на Z = 8.0:
+    // Проем под гермодверь шириной 4.0м (X: -2.0..2.0)
+    // Левая стена: от X = -8.0 до X = -2.8 (ширина 5.2м, центр -5.4)
+    this._addBox(-5.4, 0, 8, 5.2, 4.4, 0.8, hullMat);
+    // Правая стена: от X = 2.8 до X = 8.0 (ширина 5.2м, центр 5.4)
+    this._addBox(5.4, 0, 8, 5.2, 4.4, 0.8, hullMat);
+    // Верхняя перемычка над проемом: Y [3.2, 4.4]
+    this._addBox(0, 3.2, 8, 5.6, 1.2, 0.8, hazardMat);
 
-    // Аварийный красный свет медблока
-    const cryoLight = new THREE.PointLight(0xff2a18, 24, 16, 2);
-    cryoLight.position.set(0, 3.8, 0);
-    this.scene.add(cryoLight);
-    this.lights.push(cryoLight);
+    // Освещение медблока: верхние неоновые лампы + мягкий аварийный свет
+    addCeilingLamp(-3.5, 4.3, -3.5, 0xcce8ff, 22, 16);
+    addCeilingLamp(3.5, 4.3, -3.5, 0xcce8ff, 22, 16);
+    addCeilingLamp(-3.5, 4.3, 3.5, 0xcce8ff, 22, 16);
+    addCeilingLamp(3.5, 4.3, 3.5, 0xcce8ff, 22, 16);
+
+    const cryoRedLight = new THREE.PointLight(0xff3322, 18, 14, 1.8);
+    cryoRedLight.position.set(0, 3.6, 0);
+    this.scene.add(cryoRedLight);
+    this.lights.push(cryoRedLight);
 
     // ---- КАПСУЛА ПРОБУЖДЕНИЯ ИГРОКА (STASIS-04) В ЦЕНТРЕ (0, 0, 0) ----
     const podGroup = new THREE.Group();
@@ -148,22 +183,30 @@ export class StarshipLevel {
     const podScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), screenMat);
     podScreen.position.set(0, 1.3, -0.79);
 
-    // Подвижный стеклянный колпак стазис-капсулы
-    const canopyGroup = new THREE.Group();
-    canopyGroup.position.set(0, 0.65, 0);
-    const canopyGlass = new THREE.Mesh(new THREE.BoxGeometry(1.36, 1.15, 2.05), cryoGlassMat);
-    canopyGlass.position.set(0, 0.575, 0);
-    const canopyFrame = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 2.12), hazardMat);
-    canopyFrame.position.set(0, 0.04, 0);
-    canopyGroup.add(canopyGlass, canopyFrame);
+    // Откидной люк стазис-капсулы (Clamshell Hatch на шарнире сзади)
+    const hatchPivot = new THREE.Group();
+    hatchPivot.position.set(0, 1.45, -0.9); // Точка вращения шарнира
 
-    podGroup.add(podBase, podBed, podHead, podScreen, canopyGroup);
+    const hatchMesh = new THREE.Group();
+    hatchMesh.position.set(0, -1.45, 0.9); // Локальный сдвиг относительно шарнира
+
+    const canopyGlass = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.95, 2.05), cryoGlassMat);
+    canopyGlass.position.set(0, 1.15, 0);
+    const canopyFrame = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 2.12), hazardMat);
+    canopyFrame.position.set(0, 0.65, 0);
+    const canopyTopStrut = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 2.12), darkMetal);
+    canopyTopStrut.position.set(0, 1.65, 0);
+
+    hatchMesh.add(canopyGlass, canopyFrame, canopyTopStrut);
+    hatchPivot.add(hatchMesh);
+
+    podGroup.add(podBase, podBed, podHead, podScreen, hatchPivot);
     this.scene.add(podGroup);
     this.meshes.push(podGroup);
 
-    this.playerPodCanopy = canopyGroup;
+    this.playerPodHatch = hatchPivot;
 
-    // Временные физические стенки закрытой капсулы (блокируют выход пока колпак не поднят)
+    // Временные физические стенки закрытой капсулы
     const addPodCol = (cx, cy, cz, sx, sy, sz) => {
       const c = { min: V3(cx - sx / 2, cy, cz - sz / 2), max: V3(cx + sx / 2, cy + sy, cz + sz / 2) };
       this.colliders.push(c);
@@ -179,7 +222,7 @@ export class StarshipLevel {
       id: 'cryo_pod_04',
       type: 'cryo_pod',
       pos: V3(0, 1.0, 0),
-      radius: 2.8,
+      radius: 3.2,
       prompt: '[E / ПРОБЕЛ] АВАРИЙНЫЙ ВЫХОД ИЗ СТАЗИС-КАПСУЛЫ',
       usable: true,
       mesh: podGroup,
@@ -216,7 +259,7 @@ export class StarshipLevel {
     // Медицинский стол с первым оружием и терминалом
     const medTable = this._addBox(4.0, 0, -2.5, 2.4, 0.9, 1.4, lam(T.medtable));
     const medScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), screenMat);
-    medScreen.position.set(4.0, 1.8, -7.65);
+    medScreen.position.set(4.0, 1.8, -7.55);
     this.scene.add(medScreen); this.meshes.push(medScreen);
 
     // Терминал медблока (Log #1)
@@ -280,13 +323,11 @@ export class StarshipLevel {
     this._addBox(0, 4.4, 14, 7.0, 0.4, 12, darkMetal, { collide: false });
 
     // Боковые стены шлюза
-    this._addBox(-3.5, 0, 14, 0.6, 4.4, 12, hullMat, { texRepeat: [3, 1] });
-    this._addBox(3.5, 0, 14, 0.6, 4.4, 12, hullMat, { texRepeat: [3, 1] });
+    this._addBox(-3.5, 0, 14, 0.8, 4.4, 12, hullMat, { texRepeat: [3, 1] });
+    this._addBox(3.5, 0, 14, 0.8, 4.4, 12, hullMat, { texRepeat: [3, 1] });
 
-    // Оранжевый пульсирующий свет шлюза
-    const airlockLight = new THREE.PointLight(0xff7722, 26, 14, 2);
-    airlockLight.position.set(0, 3.8, 14);
-    this.scene.add(airlockLight); this.lights.push(airlockLight);
+    // Освещение шлюза: верхняя лампа + оранжевый шлюзовой свет
+    addCeilingLamp(0, 4.3, 14, 0xffaa55, 24, 16);
 
     // Гермодверь #1 (Медблок <-> Шлюз) на Z = 8.0
     this._createSlidingDoor('door_medbay', 0, 0, 8.0, 4.0, 3.2, bulkheadMat, false, 'Z');
@@ -330,30 +371,34 @@ export class StarshipLevel {
     this._addBox(-4.0, 4.4, 26, 68, 0.4, 12, darkMetal, { collide: false });
 
     // Восточная стена коридора (на X = 30)
-    this._addBox(30, 0, 26, 0.6, 4.4, 12, hullMat);
+    this._addBox(30, 0, 26, 0.8, 4.4, 12, hullMat);
 
     // Северная стена коридора (на Z = 20):
-    // Западная часть: от X = -38 до X = -2.0
-    this._addBox(-20.0, 0, 20, 36, 4.4, 0.6, hullMat);
-    // Проем шлюза на X [-2.0, 2.0]
-    // Средняя часть: от X = 2.0 до X = 18.0
-    this._addBox(10.0, 0, 20, 16, 4.4, 0.6, hullMat);
-    // Проем в Арсенал на X [18.0, 22.0] с перемычкой Y [3.2, 4.4]
-    this._addBox(20.0, 3.2, 20, 4.0, 1.2, 0.6, hazardMat);
-    // Восточная часть: от X = 22.0 до X = 30.0
-    this._addBox(26.0, 0, 20, 8, 4.4, 0.6, hullMat);
+    // Западная часть: от X = -38 до X = -2.8 (ширина 35.2, центр -20.4)
+    this._addBox(-20.4, 0, 20, 35.2, 4.4, 0.8, hullMat);
+    // Проем шлюза на X [-2.8, 2.8] с перемычкой Y [3.2, 4.4]
+    this._addBox(0.0, 3.2, 20, 5.6, 1.2, 0.8, hazardMat);
+    // Средняя часть: от X = 2.8 до X = 17.2 (ширина 14.4, центр 10.0)
+    this._addBox(10.0, 0, 20, 14.4, 4.4, 0.8, hullMat);
+    // Проем в Арсенал на X [17.2, 22.8] с перемычкой Y [3.2, 4.4]
+    this._addBox(20.0, 3.2, 20, 5.6, 1.2, 0.8, hazardMat);
+    // Восточная часть: от X = 22.8 до X = 30.0 (ширина 7.2, центр 26.4)
+    this._addBox(26.4, 0, 20, 7.2, 4.4, 0.8, hullMat);
 
     // Южная стена коридора (на Z = 32):
-    // Западная часть: от X = -38 до X = -2.0
-    this._addBox(-20.0, 0, 32, 36, 4.4, 0.6, hullMat);
-    // Проем на Мостик на X [-2.0, 2.0] с перемычкой Y [3.2, 4.4]
-    this._addBox(0.0, 3.2, 32, 4.0, 1.2, 0.6, hazardMat);
-    // Восточная часть: от X = 2.0 до X = 30.0
-    this._addBox(16.0, 0, 32, 28, 4.4, 0.6, hullMat);
+    // Западная часть: от X = -38 до X = -2.8 (ширина 35.2, центр -20.4)
+    this._addBox(-20.4, 0, 32, 35.2, 4.4, 0.8, hullMat);
+    // Проем на Мостик на X [-2.8, 2.8] с перемычкой Y [3.2, 4.4]
+    this._addBox(0.0, 3.2, 32, 5.6, 1.2, 0.8, hazardMat);
+    // Восточная часть: от X = 2.8 до X = 30.0 (ширина 27.2, центр 16.4)
+    this._addBox(16.4, 0, 32, 27.2, 4.4, 0.8, hullMat);
 
-    // Освещение центрального узла
-    const hubLightE = new THREE.PointLight(0xff3322, 26, 16, 2); hubLightE.position.set(12, 3.8, 26); this.scene.add(hubLightE); this.lights.push(hubLightE);
-    const hubLightW = new THREE.PointLight(0xff3322, 26, 16, 2); hubLightW.position.set(-14, 3.8, 26); this.scene.add(hubLightW); this.lights.push(hubLightW);
+    // Освещение центрального коридора: цепочка потолочных ламп
+    addCeilingLamp(-28, 4.3, 26, 0xcce8ff, 20, 16);
+    addCeilingLamp(-14, 4.3, 26, 0xcce8ff, 20, 16);
+    addCeilingLamp(0, 4.3, 26, 0xffd8aa, 22, 16);
+    addCeilingLamp(14, 4.3, 26, 0xcce8ff, 20, 16);
+    addCeilingLamp(25, 4.3, 26, 0xcce8ff, 20, 16);
 
     // ========================================================================
     // 4. СЕКТОР 04: ОРУЖЕЙНЫЙ АРСЕНАЛ (ARMORY) [X: 16..30, Z: 6..20, Y: 0..4.4]
@@ -363,17 +408,15 @@ export class StarshipLevel {
     this._addBox(23, 4.4, 13, 14, 0.4, 14, darkMetal, { collide: false });
 
     // Стены арсенала (Север, Запад, Восток)
-    this._addBox(23, 0, 6, 14, 4.4, 0.6, hullMat);
-    this._addBox(16, 0, 13, 0.6, 4.4, 14, hullMat);
-    this._addBox(30, 0, 13, 0.6, 4.4, 14, hullMat);
+    this._addBox(23, 0, 6, 14, 4.4, 0.8, hullMat);
+    this._addBox(16, 0, 13, 0.8, 4.4, 14, hullMat);
+    this._addBox(30, 0, 13, 0.8, 4.4, 14, hullMat);
 
     // Дверь в Арсенал на Z = 20 (требует Ключ-карту LVL-1)
     this._createSlidingDoor('door_armory', 20, 0, 20, 4.0, 3.2, bulkheadMat, true, 'Z');
 
     // Освещение арсенала
-    const armoryLight = new THREE.PointLight(0xffaa44, 28, 16, 2);
-    armoryLight.position.set(23, 3.8, 13);
-    this.scene.add(armoryLight); this.lights.push(armoryLight);
+    addCeilingLamp(23, 4.3, 13, 0xffcc77, 26, 18);
 
     // Оружейная стойка с обрезом «Палач»
     const rack = this._addBox(28.5, 0, 13, 0.8, 2.0, 3.2, darkMetal);
@@ -433,17 +476,24 @@ export class StarshipLevel {
     this._addBox(-47, 6.0, 26, 18, 0.4, 20, darkMetal, { collide: false });
 
     // Стены инженерного зала (Запад, Север, Юг)
-    this._addBox(-56, 0, 26, 0.6, 6.0, 20, hullMat);
-    this._addBox(-47, 0, 16, 18, 6.0, 0.6, hullMat);
-    this._addBox(-47, 0, 36, 18, 6.0, 0.6, hullMat);
+    this._addBox(-56, 0, 26, 0.8, 6.0, 20, hullMat);
+    this._addBox(-47, 0, 16, 18, 6.0, 0.8, hullMat);
+    this._addBox(-47, 0, 36, 18, 6.0, 0.8, hullMat);
 
     // Восточная стена на X = -38 (с дверным проемом шириной 4.0м на Z = 26)
-    this._addBox(-38, 0, 20, 0.6, 6.0, 8, hullMat);
-    this._addBox(-38, 0, 32, 0.6, 6.0, 8, hullMat);
-    this._addBox(-38, 3.2, 26, 0.6, 2.8, 4.0, hazardMat);
+    // Северная часть: от Z = 16 до Z = 23.2 (длина 7.2, центр 19.6)
+    this._addBox(-38, 0, 19.6, 0.8, 6.0, 7.2, hullMat);
+    // Южная часть: от Z = 28.8 до Z = 36 (длина 7.2, центр 32.4)
+    this._addBox(-38, 0, 32.4, 0.8, 6.0, 7.2, hullMat);
+    // Верхняя перемычка над проемом: Y [3.2, 6.0]
+    this._addBox(-38, 3.2, 26, 0.8, 2.8, 5.6, hazardMat);
 
     // Дверь в Инженерный отсек на X = -38 (требует Keycard LVL-1)
     this._createSlidingDoor('door_engineering', -38, 0, 26, 4.0, 3.2, bulkheadMat, true, 'X');
+
+    // Освещение инженерного зала
+    addCeilingLamp(-47, 5.9, 20, 0x99ccff, 28, 22);
+    addCeilingLamp(-47, 5.9, 32, 0x99ccff, 28, 22);
 
     // Массивный гудящий реактор в центре зала
     const reactorCylinder = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 5.8, 16), darkMetal);
@@ -451,7 +501,7 @@ export class StarshipLevel {
     this.scene.add(reactorCylinder); this.meshes.push(reactorCylinder);
     this.colliders.push({ min: V3(-49.8, 0, 23.2), max: V3(-44.2, 6.0, 28.8) });
 
-    const coreLight = new THREE.PointLight(0xff2211, 40, 22, 2);
+    const coreLight = new THREE.PointLight(0xff3311, 46, 26, 1.8);
     coreLight.position.set(-47, 3.2, 26);
     this.scene.add(coreLight); this.lights.push(coreLight);
     this.reactorLight = coreLight;
@@ -477,8 +527,8 @@ export class StarshipLevel {
         reactSwitchObj.usable = false;
 
         // Переключение света реактора в ярко-синий плазменный режим
-        level.reactorLight.color.setHex(0x3399ff);
-        level.reactorLight.intensity = 60;
+        level.reactorLight.color.setHex(0x33aaff);
+        level.reactorLight.intensity = 65;
 
         if (sfx) {
           sfx.portal();
@@ -496,36 +546,80 @@ export class StarshipLevel {
     // ========================================================================
     // 6. СЕКТОР 06: КОМАНДНЫЙ МОСТИК И ЧЕЛНОК (BRIDGE) [X: -10..10, Z: 32..54, Y: 0..5.0]
     // ========================================================================
-    // Пол и потолок мостика
-    this._addBox(0, 0, 43, 20, 0.2, 22, grateMat, { collide: false, texRepeat: [4, 5] });
+    // Пол и потолок мостика (стык с Z=32 магистрали до Z=54 иллюминатора)
+    this._addBox(0, 0, 43, 20, 0.2, 22, grateMat, { collide: false, texRepeat: [5, 5] });
     this._addBox(0, 5.0, 43, 20, 0.4, 22, darkMetal, { collide: false });
 
-    // Боковые стены мостика (Запад, Восток)
-    this._addBox(-10, 0, 43, 0.6, 5.0, 22, hullMat);
-    this._addBox(10, 0, 43, 0.6, 5.0, 22, hullMat);
+    // Боковые стены мостика (Западная X = -10, Восточная X = 10)
+    // Перекрывают длину от Z = 32 до Z = 54.4 без единого зазора!
+    this._addBox(-10, 0, 43.2, 0.8, 5.0, 22.4, hullMat);
+    this._addBox(10, 0, 43.2, 0.8, 5.0, 22.4, hullMat);
 
-    // Северная стена на Z = 32 (с проемом шириной 4.0м на X = 0)
-    this._addBox(-6.0, 0, 32, 8.0, 5.0, 0.6, hullMat);
-    this._addBox(6.0, 0, 32, 8.0, 5.0, 0.6, hullMat);
+    // Северная стена на Z = 32:
+    // Западная часть: от X = -10 до X = -2.8 (ширина 7.2, центр -6.4)
+    this._addBox(-6.4, 0, 32, 7.2, 5.0, 0.8, hullMat);
+    // Восточная часть: от X = 2.8 до X = 10 (ширина 7.2, центр 6.4)
+    this._addBox(6.4, 0, 32, 7.2, 5.0, 0.8, hullMat);
+    // Верхняя перемычка над проемом: Y [3.2, 5.0]
+    this._addBox(0.0, 3.2, 32, 5.6, 1.8, 0.8, hazardMat);
 
     // Гермодверь на мостик на Z = 32 (открывается после перезапуска реактора)
     this._createSlidingDoor('door_bridge', 0, 0, 32, 4.0, 3.2, bulkheadMat, true, 'Z', true);
 
-    // Панорамный иллюминатор мостика с видом в открытый космос (на Z = 54)
-    const windowFrame = this._addBox(0, 0, 54, 18, 1.0, 0.6, darkMetal);
-    const windowTop = this._addBox(0, 4.2, 54, 18, 0.8, 0.6, darkMetal);
-    const windowL = this._addBox(-8.8, 1.0, 54, 0.6, 3.2, 0.6, darkMetal);
-    const windowR = this._addBox(8.8, 1.0, 54, 0.6, 3.2, 0.6, darkMetal);
+    // Освещение мостика
+    addCeilingLamp(-4.5, 4.9, 40, 0xaad4ff, 26, 18);
+    addCeilingLamp(4.5, 4.9, 40, 0xaad4ff, 26, 18);
+    addCeilingLamp(0, 4.9, 48, 0x66bbff, 32, 20);
+
+    // ========================================================================
+    // ПАНОРАМНЫЙ ИЛЛЮМИНАТОР МОСТИКА (100% БЕЗ ЩЕЛЕЙ + ФИЗИЧЕСКИЙ БАРЬЕР)
+    // Z = 54.0, ширина ровно 20.0м (X: -10..10), высота 5.0м (Y: 0..5.0)
+    // ========================================================================
+    // 1. Нижний сплошной бронепояс во всю ширину мостика (Y: 0..1.1)
+    this._addBox(0, 0, 54.0, 20.0, 1.1, 0.8, darkMetal);
+
+    // 2. Верхний сплошной бронепояс во всю ширину мостика (Y: 4.1..5.0)
+    this._addBox(0, 4.1, 54.0, 20.0, 0.9, 0.8, darkMetal);
+
+    // 3. Левая угловая опора (X: -10.0..-8.4, Y: 1.1..4.1)
+    this._addBox(-9.2, 1.1, 54.0, 1.6, 3.0, 0.8, darkMetal);
+
+    // 4. Правая угловая опора (X: 8.4..10.0, Y: 1.1..4.1)
+    this._addBox(9.2, 1.1, 54.0, 1.6, 3.0, 0.8, darkMetal);
+
+    // 5. Вертикальные силовые ребра жесткости (Mullions)
+    for (const sx of [-4.2, 0, 4.2]) {
+      this._addBox(sx, 1.1, 54.0, 0.35, 3.0, 0.5, hazardMat);
+    }
+    // Горизонтальный разделительный брус
+    this._addBox(0, 2.6, 54.0, 16.8, 0.22, 0.45, darkMetal);
+
+    // 6. Многослойное бронированное вакуумное бронестекло
+    const viewportGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(16.8, 3.0, 0.15),
+      new THREE.MeshBasicMaterial({
+        map: T.cryoGlass,
+        transparent: true,
+        opacity: 0.52,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    viewportGlass.position.set(0, 2.6, 54.0);
+    this.scene.add(viewportGlass);
+    this.meshes.push(viewportGlass);
+
+    // 7. Сплошной физический барьер иллюминатора: игрок НИКАК не выпадет в открытый космос!
+    this.colliders.push({
+      min: V3(-10.0, 0, 53.6),
+      max: V3(10.0, 5.0, 54.5),
+    });
 
     // Консоли управления мостика
     const bridgeNav = this._addBox(0, 0, 48, 4.4, 1.1, 1.6, darkMetal);
     const bridgeScreen = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.9), screenMat);
     bridgeScreen.position.set(0, 1.6, 48.85);
     this.scene.add(bridgeScreen); this.meshes.push(bridgeScreen);
-
-    const bridgeLight = new THREE.PointLight(0x4488ff, 34, 18, 2);
-    bridgeLight.position.set(0, 4.2, 45);
-    this.scene.add(bridgeLight); this.lights.push(bridgeLight);
 
     // Консоль запуска спасательного челнока (ФИНАЛ ИГРЫ)
     const escapeShuttleObj = {
@@ -551,13 +645,22 @@ export class StarshipLevel {
     };
     this.interactables.push(escapeShuttleObj);
 
-    // Физические контейнеры и ящики
+    // ========================================================================
+    // ФИЗИЧЕСКИЕ ЯЩИКИ: Все ящики стоят ПЛОТНО НА ПОЛУ (Y = 0) БЕЗ ВИСЕНИЯ В ВОЗДУХЕ!
+    // ========================================================================
     if (this.propsMgr) {
       const shipCrates = [
-        [20, 0, 10, 1.4], [21.5, 0, 10, 1.1], [20.7, 1.4, 10, 0.9],
-        [25, 0, 17, 1.5], [25, 1.5, 17, 1.1],
-        [-8, 0, 24, 1.3], [8, 0, 28, 1.2], [-16, 0, 27, 1.4],
-        [-40, 0, 20, 1.6], [-52, 0, 30, 1.5], [-52, 1.5, 30, 1.0],
+        [20.0, 0, 9.5, 1.3],
+        [22.2, 0, 9.5, 1.1],
+        [21.1, 0, 11.2, 1.0],
+        [24.5, 0, 16.5, 1.4],
+        [26.2, 0, 16.5, 1.1],
+        [-8.0, 0, 24.0, 1.3],
+        [8.0, 0, 28.0, 1.2],
+        [-16.0, 0, 27.0, 1.4],
+        [-41.0, 0, 20.0, 1.5],
+        [-52.0, 0, 30.0, 1.4],
+        [-50.2, 0, 30.0, 1.1],
       ];
       for (const [x, y, z, s] of shipCrates) {
         this.propsMgr.addCrate(x, y, z, s, s, s);
@@ -565,7 +668,7 @@ export class StarshipLevel {
     }
   }
 
-  // Открытие стазис-капсулы
+  // Открытие стазис-капсулы (откидывание люка назад на шарнире)
   openPod(player, sfx, hud, fx) {
     if (this.podOpened) return;
     this.podOpened = true;
@@ -585,17 +688,18 @@ export class StarshipLevel {
       sfx.heartbeat();
     }
     if (fx) {
-      for (let i = 0; i < 10; i++) {
-        fx.steam(V3(rand(-0.6, 0.6), 0.7, rand(-0.9, 0.9)), V3(rand(-0.5, 0.5), rand(1.2, 2.4), rand(-0.5, 0.5)));
+      for (let i = 0; i < 16; i++) {
+        fx.steam(V3(rand(-0.6, 0.6), 0.7, rand(-0.9, 0.9)), V3(rand(-0.5, 0.5), rand(1.4, 2.6), rand(-0.5, 0.5)));
       }
     }
 
-    if (this.playerPodCanopy) {
-      const startY = this.playerPodCanopy.position.y;
+    if (this.playerPodHatch) {
       let t = 0;
       const liftInterval = setInterval(() => {
-        t += 0.05;
-        this.playerPodCanopy.position.y = startY + Math.min(1, t) * 1.8;
+        t += 0.04;
+        const p = Math.min(1, t);
+        // Плавное откидывание люка назад на -76 градусов
+        this.playerPodHatch.rotation.x = -p * (Math.PI * 0.42);
         if (t >= 1) clearInterval(liftInterval);
       }, 30);
     }
@@ -603,34 +707,43 @@ export class StarshipLevel {
     this.advanceObjective(1, sfx, hud);
   }
 
-  // Создание раздвижной гермодвери (створки шириной halfW перекрывают весь проем с 0 зазоров)
+  // ========================================================================
+  // СОЗДАНИЕ ГЕРМОДВЕРЕЙ В НИШАХ (RECESSED POCKET DOORS) БЕЗ Z-ФАЙТИНГА
+  // ========================================================================
   _createSlidingDoor(id, cx, baseY, cz, width, height, mat, locked = false, axis = 'Z', requiresReactor = false) {
     const doorGroup = new THREE.Group();
     doorGroup.position.set(cx, baseY, cz);
 
-    const halfW = width / 2 + 0.1; // небольшой нахлест для 100% герметичности без щелей
-    const depth = 0.45;
-    const gL = new THREE.BoxGeometry(axis === 'X' ? depth : halfW, height, axis === 'X' ? halfW : depth);
+    const halfW = width / 2 + 0.08;
+    const leafThickness = 0.22; // Компактная створка, свободно ходящая внутри ниши коробки
+
+    const gL = new THREE.BoxGeometry(axis === 'X' ? leafThickness : halfW, height - 0.04, axis === 'X' ? halfW : leafThickness);
     const gR = gL.clone();
 
     const doorL = new THREE.Mesh(gL, mat);
     const doorR = new THREE.Mesh(gR, mat);
 
+    // Створки разнесены по оси глубины на 4 см для идеального скольжения без пересечений
+    const offsetA = -0.02;
+    const offsetB = 0.02;
+
     if (axis === 'X') {
-      doorL.position.set(0, height / 2, -width / 4);
-      doorR.position.set(0, height / 2, width / 4);
+      doorL.position.set(offsetA, height / 2, -width / 4);
+      doorR.position.set(offsetB, height / 2, width / 4);
     } else {
-      doorL.position.set(-width / 4, height / 2, 0);
-      doorR.position.set(width / 4, height / 2, 0);
+      doorL.position.set(-width / 4, height / 2, offsetA);
+      doorR.position.set(width / 4, height / 2, offsetB);
     }
 
     doorGroup.add(doorL, doorR);
     this.scene.add(doorGroup);
     this.meshes.push(doorGroup);
 
+    // Физический коллайдер закрытой двери
+    const colDepth = 0.6;
     const collider = {
-      min: V3(cx - (axis === 'X' ? depth / 2 : width / 2), baseY, cz - (axis === 'X' ? width / 2 : depth / 2)),
-      max: V3(cx + (axis === 'X' ? depth / 2 : width / 2), baseY + height, cz + (axis === 'X' ? width / 2 : depth / 2)),
+      min: V3(cx - (axis === 'X' ? colDepth / 2 : width / 2), baseY, cz - (axis === 'X' ? width / 2 : colDepth / 2)),
+      max: V3(cx + (axis === 'X' ? colDepth / 2 : width / 2), baseY + height, cz + (axis === 'X' ? width / 2 : colDepth / 2)),
       doorId: id,
     };
     this.colliders.push(collider);
@@ -650,7 +763,7 @@ export class StarshipLevel {
     };
     this.doors.push(doorObj);
 
-    // Добавляем интерактивный триггер двери
+    // Интерактивный триггер двери
     this.interactables.push({
       id: 'interact_' + id,
       type: 'door',
@@ -689,8 +802,14 @@ export class StarshipLevel {
     const startOpen = door.openAmount;
     let t = 0;
 
+    // При открытии сразу освобождаем проход в коллайдерах
+    if (door.isOpen) {
+      const idx = this.colliders.indexOf(door.collider);
+      if (idx >= 0) this.colliders.splice(idx, 1);
+    }
+
     const anim = setInterval(() => {
-      t += 0.08;
+      t += 0.065;
       door.openAmount = startOpen + (targetOpen - startOpen) * Math.min(1, t);
       const shift = door.openAmount * (door.width * 0.48);
 
@@ -704,10 +823,7 @@ export class StarshipLevel {
 
       if (t >= 1) {
         clearInterval(anim);
-        if (door.isOpen) {
-          const idx = this.colliders.indexOf(door.collider);
-          if (idx >= 0) this.colliders.splice(idx, 1);
-        } else {
+        if (!door.isOpen) {
           if (!this.colliders.includes(door.collider)) {
             this.colliders.push(door.collider);
           }
@@ -716,7 +832,7 @@ export class StarshipLevel {
     }, 30);
   }
 
-  // Поиск ближайшего интерактивного объекта в луче взгляда игрока (щедрый и удобный радиус)
+  // Поиск ближайшего интерактивного объекта в луче взгляда игрока
   checkInteraction(playerPos, cameraFwd, maxDist = 3.6) {
     if (!this.podOpened) {
       const pod = this.interactables.find(i => i.id === 'cryo_pod_04');
@@ -735,7 +851,6 @@ export class StarshipLevel {
 
       const maxR = item.radius || maxDist;
       if (dist <= maxR) {
-        // Угол взгляда
         const dot = (dx * cameraFwd.x + dy * cameraFwd.y + dz * cameraFwd.z) / (dist || 1);
         if (dot > 0.15 || dist < 1.8) {
           const score = (dot * 2.0) - (dist * 0.5);
@@ -815,9 +930,9 @@ export class StarshipLevel {
   update(dt, time, playerPos) {
     if (this.reactorLight) {
       if (this.reactorPowered) {
-        this.reactorLight.intensity = 50 + Math.sin(time * 6) * 12;
+        this.reactorLight.intensity = 55 + Math.sin(time * 6) * 10;
       } else {
-        this.reactorLight.intensity = 24 + Math.sin(time * 3) * 8;
+        this.reactorLight.intensity = 38 + Math.sin(time * 3) * 8;
       }
     }
   }
