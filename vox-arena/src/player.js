@@ -428,41 +428,44 @@ export class Player {
         const sL = this.shotgunAssets.shellL;
         const sR = this.shotgunAssets.shellR;
 
-        // Фаза 1: Выброс стреляных гильз (t: 0.15 -> 0.38)
-        if (t < 0.38) {
+        if (t < 0.35) {
+          // Фаза 1: Выдвижение отстрелянных гильз из казённика
           if (sL && sR) {
-            sL.visible = true; sR.visible = true;
-            const ejectZ = -0.03 + Math.max(0, (t - 0.15) / 0.23) * 0.09;
+            sL.visible = true;
+            sR.visible = true;
+            const ejectZ = -0.03 + Math.max(0, (t - 0.12) / 0.23) * 0.12;
             sL.position.z = ejectZ;
             sR.position.z = ejectZ;
           }
-        }
-
-        // Момент выброса физических гильз в воздух
-        if (t >= 0.34 && t < 0.42 && !this._shotgunCased) {
-          this._shotgunCased = true;
-          this.camera.getWorldDirection(_fwd);
-          _rightDir.set(0.6, 0.8, -0.2).applyQuaternion(this.camera.quaternion);
-          const muzP = new THREE.Vector3();
-          this.shotgunAssets.barrelGroup.getWorldPosition(muzP);
-          fx.shotgunCasing(muzP, _rightDir);
-          if (sL && sR) { sL.visible = false; sR.visible = false; }
-        }
-
-        // Фаза 2: Вставка новых патронов (t: 0.48 -> 0.78)
-        if (t >= 0.48 && t < 0.82) {
+        } else if (t < 0.52) {
+          // Момент вылета стреляных гильз наружу в воздух
+          if (!this._shotgunCased) {
+            this._shotgunCased = true;
+            this.camera.getWorldDirection(_fwd);
+            _rightDir.set(0.6, 0.8, -0.2).applyQuaternion(this.camera.quaternion);
+            const muzP = new THREE.Vector3();
+            this.shotgunAssets.barrelGroup.getWorldPosition(muzP);
+            fx.shotgunCasing(muzP, _rightDir);
+          }
+          // Фаза 2: Казённик абсолютно ПУСТ — отстрелянные гильзы вылетели, новые ещё не вставлены
           if (sL && sR) {
-            sL.visible = true; sR.visible = true;
-            const insertZ = 0.08 - Math.min(1, (t - 0.48) / 0.28) * 0.11;
+            sL.visible = false;
+            sR.visible = false;
+          }
+        } else if (t < 0.82) {
+          // Фаза 3: Вставка двух новых патронов в пустые патронники
+          if (sL && sR) {
+            sL.visible = true;
+            sR.visible = true;
+            const insertZ = 0.10 - Math.min(1, (t - 0.52) / 0.28) * 0.13;
             sL.position.z = insertZ;
             sR.position.z = insertZ;
           }
-        }
-
-        // Фаза 3: Захлопывание стволов
-        if (t >= 0.82) {
+        } else {
+          // Фаза 4: Патроны полностью внутри, стволы захлопываются
           if (sL && sR) {
-            sL.visible = true; sR.visible = true;
+            sL.visible = true;
+            sR.visible = true;
             sL.position.z = -0.03;
             sR.position.z = -0.03;
           }
@@ -472,8 +475,9 @@ export class Player {
       if (this.shotgunAssets.barrelGroup) this.shotgunAssets.barrelGroup.rotation.x = 0;
       if (this.shotgunAssets.lever) this.shotgunAssets.lever.rotation.x = -0.3;
       if (this.shotgunAssets.shellL && this.shotgunAssets.shellR) {
-        this.shotgunAssets.shellL.visible = true;
-        this.shotgunAssets.shellR.visible = true;
+        const hasAmmo = (this.weapons[1].mag > 0);
+        this.shotgunAssets.shellL.visible = hasAmmo;
+        this.shotgunAssets.shellR.visible = (this.weapons[1].mag >= 2);
         this.shotgunAssets.shellL.position.z = -0.03;
         this.shotgunAssets.shellR.position.z = -0.03;
       }

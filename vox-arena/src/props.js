@@ -1,25 +1,64 @@
 import * as THREE from 'three';
 import { rand } from './config.js';
 
-const _v3 = new THREE.Vector3();
-const _r3 = new THREE.Vector3();
+const _v3a = new THREE.Vector3();
+const _v3b = new THREE.Vector3();
+const _v3c = new THREE.Vector3();
+const _quatTmp = new THREE.Quaternion();
+const _axisTmp = new THREE.Vector3();
+
+// 8 локальных вершин единичного куба
+const UNIT_CORNERS = [
+  new THREE.Vector3(-0.5, -0.5, -0.5),
+  new THREE.Vector3( 0.5, -0.5, -0.5),
+  new THREE.Vector3( 0.5, -0.5,  0.5),
+  new THREE.Vector3(-0.5, -0.5,  0.5),
+  new THREE.Vector3(-0.5,  0.5, -0.5),
+  new THREE.Vector3( 0.5,  0.5, -0.5),
+  new THREE.Vector3( 0.5,  0.5,  0.5),
+  new THREE.Vector3(-0.5,  0.5,  0.5),
+];
+
+// Применение обратного тензора инерции в мировых координатах:
+// I_world^-1 * v = R * (I_body^-1 * (R^T * v))
+function applyInvInertia(v, quat, invInertiaBody, out) {
+  _quatTmp.copy(quat).invert();
+  _v3c.copy(v).applyQuaternion(_quatTmp);
+  _v3c.x *= invInertiaBody.x;
+  _v3c.y *= invInertiaBody.y;
+  _v3c.z *= invInertiaBody.z;
+  out.copy(_v3c).applyQuaternion(quat);
+  return out;
+}
 
 export class CrateProp {
   constructor(scene, T, x, y, z, sx = 1.4, sy = 1.4, sz = 1.4) {
     this.scene = scene;
     this.size = new THREE.Vector3(sx, sy, sz);
-    this.mass = Math.max(15, sx * sy * sz * 24.0); // 20-55 кг
+    this.mass = Math.max(18, sx * sy * sz * 28.0); // 25-60 кг
+    this.invMass = 1.0 / this.mass;
+
+    // Тензор инерции сплошного прямоугольного параллелепипеда (кубоида)
+    const Ixx = (1 / 12) * this.mass * (sy * sy + sz * sz);
+    const Iyy = (1 / 12) * this.mass * (sx * sx + sz * sz);
+    const Izz = (1 / 12) * this.mass * (sx * sx + sy * sy);
+    this.invInertiaBody = new THREE.Vector3(1 / Ixx, 1 / Iyy, 1 / Izz);
+
     this.pos = new THREE.Vector3(x, y + sy / 2, z);
     this.vel = new THREE.Vector3(0, 0, 0);
-    this.rot = new THREE.Euler(0, rand(0, Math.PI * 2), 0);
-    this.angVel = new THREE.Vector3(0, 0, 0);
+    this.quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand(0, Math.PI * 2), 0));
+    this.angVel = new THREE.Vector3(0, 0, 0); // рад/с
+
     this.hp = 110;
     this.maxHp = 110;
     this.alive = true;
     this.resting = true;
     this.soundCool = 0;
     this.slideSoundT = 0;
-    this.radius = Math.max(sx, sz) * 0.58;
+    this.radius = Math.hypot(sx, sy, sz) * 0.52; // радиус охватывающей сферы
+
+    // 8 локальных вершин ящика
+    this.localCorners = UNIT_CORNERS.map(c => new THREE.Vector3(c.x * sx, c.y * sy, c.z * sz));
 
     // 3D-модель деревянного ящика со скобами
     this.mesh = new THREE.Group();
@@ -36,26 +75,30 @@ export class CrateProp {
     this.mesh.add(bTop, bBot);
 
     this.mesh.position.copy(this.pos);
-    this.mesh.rotation.copy(this.rot);
+    this.mesh.quaternion.copy(this.quat);
     scene.add(this.mesh);
   }
 
+  // Приложение 3D-импульса в произвольную точку попадания (с крутящим моментом)
   applyImpulse(hitPoint, impulseVec, isKick = false) {
     this.resting = false;
-    // Линейный импульс
-    this.vel.addScaledVector(impulseVec, 1.0 / this.mass);
 
-    // Вращательный момент (Torque) на основе плеча силы относительно центра масс
+    // Линейное ускорение
+    this.vel.addScaledVector(impulseVec, this.invMass);
+
+    // Вращательный момент (Torque = r x J)
     const r = hitPoint.clone().sub(this.pos);
-    const torque = r.cross(impulseVec).multiplyScalar(2.6 / (this.mass * this.size.x));
-    this.angVel.add(torque);
+    const torque = new THREE.Vector3().crossVectors(r, impulseVec);
+    const angImpulse = new THREE.Vector3();
+    applyInvInertia(torque, this.quat, this.invInertiaBody, angImpulse);
+    this.angVel.add(angImpulse);
 
     if (isKick) {
-      // Пинок ногой добавляет мощное кувыркание вперед
-      this.angVel.x += rand(-4.0, 4.0);
-      this.angVel.y += rand(-5.0, 5.0);
-      this.angVel.z += rand(-4.0, 4.0);
-      this.vel.y += rand(2.5, 4.5);
+      // Пинок ногой добавляет мощное кувыркание в воздухе
+      this.angVel.x += rand(-3.5, 3.5);
+      this.angVel.y += rand(-4.0, 4.0);
+      this.angVel.z += rand(-3.5, 3.5);
+      this.vel.y += rand(2.4, 4.2);
     }
   }
 
@@ -71,8 +114,8 @@ export class CrateProp {
     }
     if (sfx) sfx.woodHit();
 
-    // Физический сдвиг от пули
-    const pushForce = Math.min(32, amt * 0.35);
+    // Физический сдвиг и крутящий момент от кинетической энергии пули
+    const pushForce = Math.min(38, amt * 0.42);
     this.applyImpulse(hitPoint, shotDir.clone().multiplyScalar(pushForce));
 
     if (this.hp <= 0) {
@@ -90,84 +133,157 @@ export class CrateProp {
     if (sfx) sfx.woodSnap();
   }
 
+  // Интеграция физики твердого тела за один суб-шаг
+  _stepPhysics(dt, arena, fx, sfx) {
+    if (this.resting) return;
+
+    // 1. Гравитация
+    this.vel.y -= 22.0 * dt;
+
+    // 2. Интеграция линейной скорости
+    this.pos.addScaledVector(this.vel, dt);
+
+    // 3. Интеграция угловой скорости в кватернион ориентации
+    const angSpeed = this.angVel.length();
+    if (angSpeed > 1e-6) {
+      _axisTmp.copy(this.angVel).multiplyScalar(1 / angSpeed);
+      _quatTmp.setFromAxisAngle(_axisTmp, angSpeed * dt);
+      this.quat.premultiply(_quatTmp).normalize();
+    }
+
+    // Сопротивление воздуха
+    const linearDamping = Math.pow(0.985, dt * 60);
+    const angularDamping = Math.pow(0.975, dt * 60);
+    this.vel.x *= linearDamping;
+    this.vel.z *= linearDamping;
+    this.angVel.multiplyScalar(angularDamping);
+
+    // 4. Проверка и разрешение контактов 8 вершин куба с поверхностью пола / ступенями
+    let contactsCount = 0;
+    let maxPenetration = 0;
+    let groundNormal = new THREE.Vector3(0, 1, 0);
+
+    const normalTorqueArm = new THREE.Vector3();
+    const invInertiaTorque = new THREE.Vector3();
+
+    for (let i = 0; i < 8; i++) {
+      // Мировое положение вершины
+      const r = this.localCorners[i].clone().applyQuaternion(this.quat);
+      const cornerWorld = this.pos.clone().add(r);
+
+      const groundY = arena ? arena.groundTopAt(cornerWorld.x, cornerWorld.z, cornerWorld.y) : 0;
+      const penetration = groundY - cornerWorld.y;
+
+      if (penetration > 0) {
+        contactsCount++;
+        maxPenetration = Math.max(maxPenetration, penetration);
+
+        // Линейная скорость вершины: v_corner = v + omega x r
+        const vCorner = new THREE.Vector3().crossVectors(this.angVel, r).add(this.vel);
+        const vn = vCorner.dot(groundNormal);
+
+        // Расчет эффективной массы в точке контакта вдоль нормали
+        normalTorqueArm.crossVectors(r, groundNormal);
+        applyInvInertia(normalTorqueArm, this.quat, this.invInertiaBody, invInertiaTorque);
+        const Kn = this.invMass + invInertiaTorque.dot(normalTorqueArm);
+
+        // Коэффициент упругости отскока (только при высокой скорости)
+        const restitution = vn < -1.2 ? 0.22 : 0.0;
+        const bias = Math.min(3.5, penetration * 24.0);
+        let jn = (-(1.0 + restitution) * vn + bias) / Math.max(1e-5, Kn);
+
+        if (jn > 0) {
+          // Применяем нормальный импульс
+          const normalImpulse = groundNormal.clone().multiplyScalar(jn);
+          this.vel.addScaledVector(normalImpulse, this.invMass);
+
+          const angImpNorm = new THREE.Vector3();
+          const rCrossJn = new THREE.Vector3().crossVectors(r, normalImpulse);
+          applyInvInertia(rCrossJn, this.quat, this.invInertiaBody, angImpNorm);
+          this.angVel.add(angImpNorm);
+
+          // Звук удара о пол
+          if (vn < -1.8 && this.soundCool <= 0) {
+            if (sfx) sfx.crateThud(-vn);
+            if (fx) fx.woodImpact(cornerWorld, groundNormal);
+            this.soundCool = 0.16;
+          }
+
+          // Трение Кулона (Friction) о пол в тангенциальном направлении
+          const vTangent = vCorner.clone().sub(groundNormal.clone().multiplyScalar(vn));
+          const vt = vTangent.length();
+
+          if (vt > 1e-4) {
+            const tangentDir = vTangent.clone().multiplyScalar(1 / vt);
+            const tanTorqueArm = new THREE.Vector3().crossVectors(r, tangentDir);
+            applyInvInertia(tanTorqueArm, this.quat, this.invInertiaBody, invInertiaTorque);
+            const Kt = this.invMass + invInertiaTorque.dot(tanTorqueArm);
+
+            const mu = 0.58; // коэффициент трения дерева о камень
+            let jt = -vt / Math.max(1e-5, Kt);
+            jt = Math.max(-mu * jn, Math.min(mu * jn, jt));
+
+            const frictionImpulse = tangentDir.clone().multiplyScalar(jt);
+            this.vel.addScaledVector(frictionImpulse, this.invMass);
+
+            const rCrossJt = new THREE.Vector3().crossVectors(r, frictionImpulse);
+            const angImpTan = new THREE.Vector3();
+            applyInvInertia(rCrossJt, this.quat, this.invInertiaBody, angImpTan);
+            this.angVel.add(angImpTan);
+          }
+        }
+
+        // Выталкивание вершины из пола
+        this.pos.y += penetration * 0.45;
+      }
+    }
+
+    // Звук волочения / скольжения по полу
+    const horizSpd = Math.hypot(this.vel.x, this.vel.z);
+    if (contactsCount >= 2 && horizSpd > 2.0 && this.slideSoundT <= 0) {
+      if (sfx) sfx.crateSlide();
+      this.slideSoundT = 0.32;
+    }
+
+    // Столкновение со стенами арены
+    if (arena && arena.clampCircle) {
+      const halfH = this.size.y * 0.5;
+      arena.clampCircle(this.pos, this.radius * 0.85, this.pos.y - halfH, this.size.y);
+    }
+
+    // 5. Успокоение и перевод в стабильный покой (Resting State)
+    if (contactsCount >= 3 && horizSpd < 0.06 && Math.abs(this.vel.y) < 0.08 && this.angVel.length() < 0.12) {
+      this.vel.set(0, 0, 0);
+      this.angVel.set(0, 0, 0);
+
+      // Естественное выравнивание на ближайшую грань куба
+      const euler = new THREE.Euler().setFromQuaternion(this.quat, 'YXZ');
+      const snap = a => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
+      euler.x = snap(euler.x);
+      euler.z = snap(euler.z);
+      this.quat.setFromEuler(euler);
+
+      this.resting = true;
+    }
+  }
+
   update(dt, arena, enemies, player, fx, sfx) {
     if (!this.alive) return;
     if (this.soundCool > 0) this.soundCool -= dt;
     if (this.slideSoundT > 0) this.slideSoundT -= dt;
 
-    if (this.resting) {
-      this.mesh.position.copy(this.pos);
-      this.mesh.rotation.copy(this.rot);
-      return;
-    }
-
-    // Гравитация
-    this.vel.y -= 22.0 * dt;
-
-    // Интеграция скорости и положения
-    this.pos.addScaledVector(this.vel, dt);
-    this.rot.x += this.angVel.x * dt;
-    this.rot.y += this.angVel.y * dt;
-    this.rot.z += this.angVel.z * dt;
-
-    // Затухание вращения в воздухе
-    this.angVel.multiplyScalar(Math.pow(0.92, dt * 60));
-
-    // Проверка столкновения с полом арены (с учетом ступеней и возвышений)
-    const groundY = arena ? arena.groundTopAt(this.pos.x, this.pos.z, this.pos.y) : 0;
-    const halfH = this.size.y * 0.5;
-
-    if (this.pos.y - halfH <= groundY) {
-      this.pos.y = groundY + halfH;
-      const hitSpeed = -this.vel.y;
-
-      if (hitSpeed > 1.6 && this.soundCool <= 0) {
-        if (sfx) sfx.crateThud(hitSpeed);
-        if (fx) fx.woodImpact(this.pos, new THREE.Vector3(0, 1, 0));
-        this.soundCool = 0.18;
-      }
-
-      // Упругий отскок с сильным гашением
-      this.vel.y = -this.vel.y * 0.18;
-      if (Math.abs(this.vel.y) < 0.4) this.vel.y = 0;
-
-      // Трение о пол
-      const friction = Math.pow(0.12, dt * 60);
-      this.vel.x *= friction;
-      this.vel.z *= friction;
-
-      // Трение вращения о пол
-      this.angVel.x *= Math.pow(0.08, dt * 60);
-      this.angVel.z *= Math.pow(0.08, dt * 60);
-      this.angVel.y *= Math.pow(0.25, dt * 60);
-
-      // Звук скольжения тяжелого ящика
-      const horizSpd = Math.hypot(this.vel.x, this.vel.z);
-      if (horizSpd > 2.2 && this.slideSoundT <= 0) {
-        if (sfx) sfx.crateSlide();
-        this.slideSoundT = 0.35;
-      }
-
-      // Если ящик замедлился — укладываем ровно и переводим в сон
-      if (horizSpd < 0.08 && Math.abs(this.vel.y) < 0.1 && this.angVel.length() < 0.15) {
-        this.vel.set(0, 0, 0);
-        this.angVel.set(0, 0, 0);
-        // Выравнивание угла наклона к ближайшему углу 90° (0, PI/2, PI, 3PI/2)
-        const snap = a => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
-        this.rot.x = snap(this.rot.x);
-        this.rot.z = snap(this.rot.z);
-        this.resting = true;
+    if (!this.resting) {
+      // 2 физических суб-шага для численной стабильности и предотвращения проваливаний
+      const substeps = 2;
+      const subDt = dt / substeps;
+      for (let s = 0; s < substeps; s++) {
+        this._stepPhysics(subDt, arena, fx, sfx);
       }
     }
 
-    // Столкновение со стенами арены
-    if (arena && arena.clampCircle) {
-      arena.clampCircle(this.pos, this.radius, this.pos.y - halfH, this.size.y);
-    }
-
-    // Физическое столкновение летящего/скользящего ящика с монстрами (БОУЛИНГ!)
+    // Физическое столкновение летящего/скользящего ящика с монстрами
     const spd = this.vel.length();
-    if (spd > 2.6 && enemies && enemies.list) {
+    if (spd > 2.4 && enemies && enemies.list) {
       for (const e of enemies.list) {
         if (!e.alive || e.state === 'dead' || e.state === 'dying' || e.state === 'corpse_ragdoll') continue;
         const dx = e.pos.x - this.pos.x;
@@ -181,7 +297,7 @@ export class CrateProp {
           const hitDir = this.vel.clone().normalize();
           enemies.damage(e, dmg, hitDir, this.pos.clone(), 'torso');
 
-          // Принудительно сбиваем тварь с ног
+          // Сбиваем тварь с ног
           if (e.poise > 0) e.poise = 0;
 
           if (fx) {
@@ -193,8 +309,8 @@ export class CrateProp {
             sfx.boneCrack();
           }
 
-          // Ящик теряет скорость от удара о плоть
-          this.vel.multiplyScalar(0.4);
+          // Ящик передает импульс и отскакивает
+          this.vel.multiplyScalar(0.42);
           this.angVel.multiplyScalar(0.5);
           break;
         }
@@ -206,7 +322,7 @@ export class CrateProp {
       const pdx = this.pos.x - player.pos.x;
       const pdz = this.pos.z - player.pos.z;
       const pDist2 = pdx * pdx + pdz * pdz;
-      const pushR = this.radius + player.radius + 0.05;
+      const pushR = this.radius * 0.8 + player.radius + 0.05;
 
       if (pDist2 < pushR * pushR && Math.abs(player.pos.y - this.pos.y) < 1.4) {
         const pDist = Math.sqrt(pDist2) || 0.001;
@@ -214,17 +330,18 @@ export class CrateProp {
         const nz = pdz / pDist;
         const overlap = pushR - pDist;
 
-        // Игрок толкает ящик вперед
-        this.pos.x += nx * overlap * 0.6;
-        this.pos.z += nz * overlap * 0.6;
-        this.vel.x += nx * 2.5;
-        this.vel.z += nz * 2.5;
+        // Игрок сдвигает ящик с места
+        this.pos.x += nx * overlap * 0.65;
+        this.pos.z += nz * overlap * 0.65;
+        this.vel.x += nx * 2.8;
+        this.vel.z += nz * 2.8;
+        this.angVel.y += (Math.random() - 0.5) * 1.5;
         this.resting = false;
       }
     }
 
     this.mesh.position.copy(this.pos);
-    this.mesh.rotation.copy(this.rot);
+    this.mesh.quaternion.copy(this.quat);
   }
 }
 
@@ -249,14 +366,14 @@ export class PropsManager {
     this.list.length = 0;
   }
 
-  // Raycast проверка попадания пуль / картечи по ящикам
+  // Точный Raycast по ориентированному ящику (Oriented Bounding Box)
   raycast(origin, dir, maxDist) {
     let bestHit = null;
     let bestDist = maxDist;
 
     for (const p of this.list) {
       if (!p.alive) continue;
-      // Быстрая проверка ограничивающей сферы
+      // Быстрая сфера
       const toProp = p.pos.clone().sub(origin);
       const proj = toProp.dot(dir);
       if (proj < 0 || proj > bestDist + p.radius) continue;
@@ -264,12 +381,10 @@ export class PropsManager {
       const perp2 = toProp.lengthSq() - proj * proj;
       if (perp2 > p.radius * p.radius) continue;
 
-      // Точная проверка Oriented Bounding Box
-      // Переводим луч в локальную систему координат ящика
-      _v3.copy(origin).sub(p.pos);
-      const invEuler = new THREE.Euler(-p.rot.x, -p.rot.y, -p.rot.z, 'ZYX');
-      _v3.applyEuler(invEuler);
-      const localDir = dir.clone().applyEuler(invEuler);
+      // Точная проверка OBB через инверсию кватерниона
+      const invQuat = p.quat.clone().invert();
+      const localOrigin = origin.clone().sub(p.pos).applyQuaternion(invQuat);
+      const localDir = dir.clone().applyQuaternion(invQuat);
 
       const hx = p.size.x / 2, hy = p.size.y / 2, hz = p.size.z / 2;
       let tmin = 0, tmax = bestDist;
@@ -277,9 +392,9 @@ export class PropsManager {
       let ok = true;
 
       const axes = [
-        { orig: _v3.x, d: localDir.x, min: -hx, max: hx, ax: 0 },
-        { orig: _v3.y, d: localDir.y, min: -hy, max: hy, ax: 1 },
-        { orig: _v3.z, d: localDir.z, min: -hz, max: hz, ax: 2 },
+        { orig: localOrigin.x, d: localDir.x, min: -hx, max: hx, ax: 0 },
+        { orig: localOrigin.y, d: localDir.y, min: -hy, max: hy, ax: 1 },
+        { orig: localOrigin.z, d: localDir.z, min: -hz, max: hz, ax: 2 },
       ];
 
       for (const a of axes) {
@@ -298,14 +413,13 @@ export class PropsManager {
 
       if (ok && tmin > 0.01 && tmin < bestDist) {
         bestDist = tmin;
-        const localHitPoint = _v3.clone().addScaledVector(localDir, tmin);
         const worldHitPoint = origin.clone().addScaledVector(dir, tmin);
 
         const localNorm = new THREE.Vector3();
         if (normalAxis === 0) localNorm.x = normalSign;
         else if (normalAxis === 1) localNorm.y = normalSign;
         else if (normalAxis === 2) localNorm.z = normalSign;
-        const worldNorm = localNorm.applyEuler(p.rot);
+        const worldNorm = localNorm.applyQuaternion(p.quat);
 
         bestHit = {
           prop: p,
@@ -319,8 +433,74 @@ export class PropsManager {
     return bestHit;
   }
 
-  // Обновление всех физических интерактивных объектов
+  // Обновление физических взаимодействий между самими ящиками и миром
   update(dt, arena, enemies, player, fx, sfx) {
+    // 1. Попарные физические столкновения между ящиками (Crate vs Crate)
+    const len = this.list.length;
+    for (let i = 0; i < len; i++) {
+      const a = this.list[i];
+      if (!a.alive) continue;
+
+      for (let j = i + 1; j < len; j++) {
+        const b = this.list[j];
+        if (!b.alive) continue;
+
+        const delta = b.pos.clone().sub(a.pos);
+        const dist = delta.length();
+        const minDist = (a.radius + b.radius) * 0.72;
+
+        if (dist < minDist && dist > 1e-4) {
+          const normal = delta.multiplyScalar(1.0 / dist);
+          const overlap = minDist - dist;
+
+          // Расталкивание центров
+          const totalMass = a.mass + b.mass;
+          const pushA = overlap * (b.mass / totalMass);
+          const pushB = overlap * (a.mass / totalMass);
+
+          a.pos.addScaledVector(normal, -pushA);
+          b.pos.addScaledVector(normal, pushB);
+
+          // Передача импульса удара
+          const vRel = b.vel.clone().sub(a.vel);
+          const vn = vRel.dot(normal);
+
+          if (vn < 0) {
+            const restitution = 0.35;
+            const impulseMag = -(1 + restitution) * vn / (a.invMass + b.invMass);
+            const impulseVec = normal.clone().multiplyScalar(impulseMag);
+
+            a.vel.addScaledVector(impulseVec, -a.invMass);
+            b.vel.addScaledVector(impulseVec, b.invMass);
+
+            // Угловой импульс при ударе ящиков
+            const contactPoint = a.pos.clone().addScaledVector(normal, a.radius * 0.6);
+            const rA = contactPoint.clone().sub(a.pos);
+            const rB = contactPoint.clone().sub(b.pos);
+
+            const torqueA = new THREE.Vector3().crossVectors(rA, impulseVec.clone().negate());
+            const torqueB = new THREE.Vector3().crossVectors(rB, impulseVec);
+
+            const angA = new THREE.Vector3();
+            const angB = new THREE.Vector3();
+            applyInvInertia(torqueA, a.quat, a.invInertiaBody, angA);
+            applyInvInertia(torqueB, b.quat, b.invInertiaBody, angB);
+
+            a.angVel.add(angA);
+            b.angVel.add(angB);
+
+            a.resting = false;
+            b.resting = false;
+
+            if (Math.abs(vn) > 1.2 && sfx) {
+              sfx.crateThud(Math.abs(vn));
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Индивидуальное обновление физики ящиков
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
       if (!p.alive) {
