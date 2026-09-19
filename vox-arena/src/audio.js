@@ -251,6 +251,65 @@ export class AudioSys {
   portal() { this._tone('sawtooth', 60, 440, 0.4, 0.18); this._noise(0.4, { freq: 800, gain: 0.2, sweepTo: 2400 }); }
   click() { this._tone('square', 1100, 900, 0.03, 0.1); }
 
+  // ==========================================================================
+  // НАУЧНО-ФАНТАСТИЧЕСКИЕ ЗВУКИ: КОРАБЛЬ «ЭРЕБ-7»
+  // ==========================================================================
+
+  cryoHiss() {
+    // Стравливание криогенного газа под давлением + тяжелый щелчок пневмозамка
+    this._noise(1.4, { freq: 3200, q: 1.2, gain: 0.75, sweepTo: 450, type: 'bandpass' });
+    this._noise(0.6, { freq: 6500, q: 0.8, gain: 0.5, sweepTo: 1200, type: 'highpass' });
+    this._tone('triangle', 340, 90, 0.22, 0.5, 0.05); // отпирание замка
+    this._tone('sine', 120, 40, 0.35, 0.7, 0.08);     // сдвиг колпака
+  }
+
+  doorHydraulic() {
+    // Тяжелый ход гидравлических поршней и скольжение стальной бронедвери
+    this._noise(0.85, { freq: 850, q: 1.5, gain: 0.5, sweepTo: 220, type: 'bandpass' });
+    this._tone('triangle', 140, 110, 0.75, 0.35);
+    this._tone('sine', 85, 45, 0.9, 0.55);
+    this._noise(0.12, { freq: 2400, q: 2.0, gain: 0.45, at: 0.78 }); // щелчок доводчика
+  }
+
+  doorLocked() {
+    // Двойной отказ электронного замка (Error Beep)
+    this._tone('square', 220, 220, 0.09, 0.25, 0);
+    this._tone('square', 180, 180, 0.12, 0.25, 0.12);
+  }
+
+  terminalBeep() {
+    // Чириканье клавиатуры и загрузка данных ЭЛТ-консоли
+    this._tone('sine', 1400, 1800, 0.04, 0.22, 0);
+    this._tone('sine', 1800, 2200, 0.04, 0.22, 0.06);
+    this._tone('sine', 1600, 1950, 0.05, 0.25, 0.12);
+    this._noise(0.08, { freq: 4200, gain: 0.15, at: 0.02 });
+  }
+
+  keycardBeep() {
+    // Подтверждение доступа ключ-карты (High Access Granted)
+    this._tone('triangle', 660, 660, 0.08, 0.35, 0);
+    this._tone('triangle', 880, 880, 0.08, 0.35, 0.09);
+    this._tone('sine', 1320, 1320, 0.14, 0.4, 0.18);
+  }
+
+  steamHiss() {
+    // Короткий выброс перегретого пара из пробитой трубы
+    this._noise(0.45, { freq: 4200, q: 1.5, gain: 0.6, sweepTo: 1800, type: 'bandpass' });
+    this._noise(0.2, { freq: 7000, q: 0.9, gain: 0.4, type: 'highpass' });
+  }
+
+  heartbeat() {
+    // Глухой, низкий удар сердца при пробуждении
+    this._thud(this._t(), 0.75, 62);
+    this._thud(this._t() + 0.26, 0.45, 52);
+  }
+
+  alarmKlaxon() {
+    // Воющий тон аварийной тревоги корабля
+    this._tone('sawtooth', 440, 220, 0.6, 0.25);
+    this._noise(0.5, { freq: 650, gain: 0.2, sweepTo: 180, type: 'lowpass' });
+  }
+
   // ---- Музыка: мрачный хоррор-эмбиент (дроны + сердцебиение + свеллы) ----
   startMusic() {
     if (!this.ctx || this.musicOn) return;

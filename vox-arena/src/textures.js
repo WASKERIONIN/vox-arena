@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { rand } from './config.js';
 
 // Процедурные PS1-текстуры (canvas), фильтрация nearest
 function makeTex(size, draw, { repeat, srgb = true } = {}) {
@@ -252,6 +253,220 @@ export function makeTextures() {
     }
     noise(g, s, 380, 0.2);
   }, { repeat: [2, 2] });
+
+  // ==========================================================================
+  // НАУЧНО-ФАНТАСТИЧЕСКИЕ ТЕКСТУРЫ КОСМИЧЕСКОГО КОРАБЛЯ «ЭРЕБ-7»
+  // ==========================================================================
+
+  // 1. Обшивка и титановые переборки звездолёта (Hull Plating)
+  T.hull = makeTex(256, (g, s) => {
+    g.fillStyle = '#1e2127'; g.fillRect(0, 0, s, s);
+    const panelW = 64;
+    for (let x = 0; x < 4; x++) {
+      const px = x * panelW;
+      const v = 32 + Math.random() * 12;
+      g.fillStyle = `rgb(${v},${v + 4},${v + 8})`;
+      g.fillRect(px + 2, 4, panelW - 4, s - 8);
+      g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(px + 2, 4, panelW - 4, 3);
+      g.fillStyle = 'rgba(0,0,0,.65)'; g.fillRect(px, 0, 2, s);
+
+      // Внутренние технологические вырезы и сервисные слоты
+      g.fillStyle = '#121418';
+      g.fillRect(px + 12, 32, panelW - 24, 80);
+      g.strokeStyle = '#2d333d'; g.lineWidth = 2;
+      g.strokeRect(px + 12, 32, panelW - 24, 80);
+
+      // Крепёжные винты и заклёпки
+      g.fillStyle = '#0b0d10';
+      for (let y = 14; y < s - 10; y += 36) {
+        g.fillRect(px + 6, y, 4, 4);
+        g.fillRect(px + panelW - 10, y, 4, 4);
+      }
+    }
+    // Предупреждающие жёлто-чёрные полосы на нижней кромке
+    for (let x = 0; x < s; x += 32) {
+      g.fillStyle = '#d8a418'; g.fillRect(x, s - 12, 16, 12);
+      g.fillStyle = '#151515'; g.fillRect(x + 16, s - 12, 16, 12);
+    }
+    noise(g, s, 600, 0.14); noise(g, s, 150, 0.04, true);
+  }, { repeat: [4, 1] });
+
+  // 2. Решётчатый металлический настил пола (Floor Grate)
+  T.grate = makeTex(128, (g, s) => {
+    g.fillStyle = '#0e1014'; g.fillRect(0, 0, s, s);
+    const step = 16;
+    for (let y = 0; y < s; y += step) {
+      for (let x = 0; x < s; x += step) {
+        g.fillStyle = '#22262e';
+        g.fillRect(x + 2, y + 2, step - 4, step - 4);
+        g.fillStyle = '#07080a'; // глубина под решёткой
+        g.fillRect(x + 5, y + 5, step - 10, step - 10);
+      }
+    }
+    // Рамка по периметру
+    g.strokeStyle = '#383e4a'; g.lineWidth = 4;
+    g.strokeRect(2, 2, s - 4, s - 4);
+    noise(g, s, 400, 0.18);
+  }, { repeat: [8, 8] });
+
+  // 3. Бронированная гермодверь / шлюзовые створки (Bulkhead Door)
+  T.bulkhead = makeTex(256, (g, s) => {
+    g.fillStyle = '#22262d'; g.fillRect(0, 0, s, s);
+    g.fillStyle = '#2d333d'; g.fillRect(8, 8, s - 16, s - 16);
+
+    // Усиленные ребра жесткости крест-накрест
+    g.strokeStyle = '#14171c'; g.lineWidth = 14;
+    g.strokeRect(16, 16, s - 32, s - 32);
+    g.beginPath(); g.moveTo(24, 24); g.lineTo(s - 24, s - 24); g.stroke();
+    g.beginPath(); g.moveTo(s - 24, 24); g.lineTo(24, s - 24); g.stroke();
+
+    // Центральный гидравлический замок
+    g.fillStyle = '#15181f'; g.fillRect(s / 2 - 28, s / 2 - 28, 56, 56);
+    g.strokeStyle = '#4a5363'; g.lineWidth = 4; g.strokeRect(s / 2 - 28, s / 2 - 28, 56, 56);
+
+    // Индикатор замка (зеленый / красный)
+    g.fillStyle = '#00ff66'; g.beginPath(); g.arc(s / 2, s / 2, 8, 0, 7); g.fill();
+    g.fillStyle = 'rgba(0,255,100,0.4)'; g.beginPath(); g.arc(s / 2, s / 2, 16, 0, 7); g.fill();
+
+    // Маркировка отсека
+    g.fillStyle = '#d8a418'; g.font = 'bold 20px monospace';
+    g.fillText('SEC-01', 32, 50);
+
+    // Диагональные предупреждающие полосы
+    for (let x = 0; x < s; x += 32) {
+      g.fillStyle = '#d8a418'; g.fillRect(x, s - 24, 16, 16);
+      g.fillStyle = '#101010'; g.fillRect(x + 16, s - 24, 16, 16);
+    }
+    noise(g, s, 500, 0.16);
+  });
+
+  // 4. Зелёный/янтарный CRT-терминал с данными (Computer Screen)
+  T.screen = makeTex(256, (g, s) => {
+    g.fillStyle = '#06140c'; g.fillRect(0, 0, s, s);
+
+    // Сканлайны ЭЛТ-монитора
+    for (let y = 0; y < s; y += 4) {
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, y, s, 2);
+    }
+
+    // Рамка экрана
+    g.strokeStyle = '#1a5c32'; g.lineWidth = 6; g.strokeRect(6, 6, s - 12, s - 12);
+
+    // Текст консоли
+    g.fillStyle = '#33ff77'; g.font = 'bold 15px monospace';
+    g.fillText('> EREBUS OS v4.82', 20, 32);
+    g.fillStyle = '#ff4433';
+    g.fillText('! BIOHAZARD DETECTED', 20, 58);
+    g.fillStyle = '#22dd66'; g.font = '12px monospace';
+    g.fillText('CRYO-BAY: FAULT', 20, 84);
+    g.fillText('ATMOSPHERE: 82% O2/N2', 20, 104);
+    g.fillText('SECURITY: LOCKDOWN', 20, 124);
+    g.fillText('REACTOR: STANDBY [32%]', 20, 144);
+    g.fillText('CREW VITALS: OFFLINE', 20, 164);
+
+    // Биосхема / радар в нижнем углу
+    g.strokeStyle = '#33ff77'; g.lineWidth = 2;
+    g.strokeRect(140, 175, 95, 65);
+    g.fillStyle = '#ff3322';
+    g.beginPath(); g.arc(170, 205, 5, 0, 7); g.fill();
+    g.beginPath(); g.arc(205, 220, 4, 0, 7); g.fill();
+
+    // Свечение люминофора
+    const grd = g.createRadialGradient(s / 2, s / 2, 40, s / 2, s / 2, 120);
+    grd.addColorStop(0, 'rgba(51,255,119,0.12)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, s, s);
+  });
+
+  // 5. Замороженное стекло стазис-капсулы (Cryo Pod Glass)
+  T.cryoGlass = makeTex(128, (g, s) => {
+    g.fillStyle = '#122530'; g.fillRect(0, 0, s, s);
+    // Кристаллы льда и морозный узор
+    for (let i = 0; i < 90; i++) {
+      g.strokeStyle = 'rgba(180,230,255,0.45)';
+      g.lineWidth = 1 + Math.random() * 2;
+      const x = Math.random() * s, y = Math.random() * s;
+      g.beginPath(); g.moveTo(x, y);
+      g.lineTo(x + rand(-16, 16), y + rand(-16, 16));
+      g.stroke();
+    }
+    // Цифровые метки стазиса
+    g.fillStyle = '#55ffff'; g.font = 'bold 16px monospace';
+    g.fillText('STASIS-04', 16, 30);
+    g.fillStyle = 'rgba(100,220,255,0.7)'; g.font = '11px monospace';
+    g.fillText('VITALS: 44 BPM', 16, 50);
+    g.fillText('TEMP: -18.4 C', 16, 68);
+
+    // Градиент заиндевения
+    const grd = g.createLinearGradient(0, 0, 0, s);
+    grd.addColorStop(0, 'rgba(140,210,255,0.5)');
+    grd.addColorStop(0.5, 'rgba(80,160,200,0.2)');
+    grd.addColorStop(1, 'rgba(140,210,255,0.5)');
+    g.fillStyle = grd; g.fillRect(0, 0, s, s);
+    noise(g, s, 300, 0.2, true);
+  });
+
+  // 6. Медицинский стол из нержавеющей стали (Med Table)
+  T.medtable = makeTex(128, (g, s) => {
+    g.fillStyle = '#4a5058'; g.fillRect(0, 0, s, s);
+    g.fillStyle = '#606872'; g.fillRect(4, 4, s - 8, s - 8);
+    // Блики шлифованного металла
+    for (let y = 8; y < s - 8; y += 12) {
+      g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(4, y, s - 8, 4);
+    }
+    // Кровавый подтёк и след руки
+    g.fillStyle = 'rgba(140,15,10,0.65)';
+    g.beginPath(); g.arc(75, 60, 18, 0, 7); g.fill();
+    g.fillRect(72, 60, 8, 35);
+    noise(g, s, 300, 0.15);
+  });
+
+  // 7. Электронная ключ-карта доступа (Security Keycard)
+  T.keycard = makeTex(64, (g, s) => {
+    g.fillStyle = '#182028'; g.fillRect(0, 0, s, s);
+    g.fillStyle = '#22384a'; g.fillRect(4, 4, s - 8, s - 8);
+    // Золотой чип
+    g.fillStyle = '#e8b830'; g.fillRect(10, 14, 18, 22);
+    // Полоса уровня допуска (красный допуск)
+    g.fillStyle = '#ff2418'; g.fillRect(32, 14, 22, 8);
+    g.fillStyle = '#ffffff'; g.font = 'bold 9px monospace';
+    g.fillText('LVL-1', 32, 34);
+    noise(g, s, 150, 0.15);
+  });
+
+  // 8. Открытый космос с туманностью и планетой (Deep Space Vista)
+  T.space = makeTex(512, (g, s) => {
+    g.fillStyle = '#030206'; g.fillRect(0, 0, s, s);
+
+    // Звёздная россыпь
+    for (let i = 0; i < 400; i++) {
+      const x = Math.random() * s, y = Math.random() * s;
+      const r = Math.random() < 0.9 ? 1 : 2;
+      const a = 0.4 + Math.random() * 0.6;
+      g.fillStyle = Math.random() < 0.2 ? `rgba(180,210,255,${a})` : `rgba(255,255,255,${a})`;
+      g.fillRect(x, y, r, r);
+    }
+
+    // Красочная туманность
+    const grdNeb = g.createRadialGradient(s * 0.65, s * 0.4, 30, s * 0.65, s * 0.4, 220);
+    grdNeb.addColorStop(0, 'rgba(180,40,90,0.45)');
+    grdNeb.addColorStop(0.4, 'rgba(60,20,100,0.3)');
+    grdNeb.addColorStop(0.8, 'rgba(20,10,40,0.15)');
+    grdNeb.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grdNeb; g.fillRect(0, 0, s, s);
+
+    // Газовый гигант на горизонте
+    const px = s * 0.28, py = s * 0.65, pr = 85;
+    const grdPlanet = g.createRadialGradient(px - 30, py - 30, 10, px, py, pr);
+    grdPlanet.addColorStop(0, '#c48550');
+    grdPlanet.addColorStop(0.5, '#7a3e20');
+    grdPlanet.addColorStop(0.9, '#2a1208');
+    grdPlanet.addColorStop(1, '#050204');
+    g.fillStyle = grdPlanet; g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill();
+
+    // Кольца планеты
+    g.strokeStyle = 'rgba(210,170,120,0.35)'; g.lineWidth = 5;
+    g.beginPath(); g.ellipse(px, py, pr * 1.7, 22, -0.3, 0, 7); g.stroke();
+  });
 
   return T;
 }
