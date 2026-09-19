@@ -11,6 +11,7 @@ import { rand } from './config.js';
 const SPAWN_DUR = 0.9;
 
 const BASE_PELVIS_Y = {
+  zombie: 0.82,
   minion: 0.85,
   rogue: 0.68,
   warrior: 0.92,
@@ -77,14 +78,18 @@ function makeMats(tex) {
   const meat = new THREE.MeshLambertMaterial({ map: tex.flesh, flatShading: true });
   const meatDark = new THREE.MeshLambertMaterial({ map: tex.flesh, color: 0x777777, flatShading: true });
   const meatPale = new THREE.MeshLambertMaterial({ map: tex.flesh, color: 0xc49a8a, flatShading: true });
+  const meatRot = new THREE.MeshLambertMaterial({ map: tex.flesh, color: 0x6e7e60, flatShading: true }); // Гнилостная зеленоватая плоть зомби
+  const fleshRancid = new THREE.MeshLambertMaterial({ map: tex.flesh, color: 0x48322e, flatShading: true });
   const bone = new THREE.MeshLambertMaterial({ color: 0xb9ad93, flatShading: true });
+  const boneDirty = new THREE.MeshLambertMaterial({ color: 0x8a8270, flatShading: true });
   const maw = new THREE.MeshLambertMaterial({ color: 0x160709, flatShading: true });
   const membrane = new THREE.MeshLambertMaterial({ map: tex.membrane, flatShading: true });
   const eyeYellow = new THREE.MeshBasicMaterial({ color: 0xffd23a });
   const eyeRed = new THREE.MeshBasicMaterial({ color: 0xff2a12 });
   const eyeViolet = new THREE.MeshBasicMaterial({ color: 0xc44dff });
+  const eyeCataract = new THREE.MeshBasicMaterial({ color: 0xd8e4c8 }); // Бельмо мертвого глаза
   const heart = new THREE.MeshBasicMaterial({ color: 0xff1e10 });
-  return { meat, meatDark, meatPale, bone, maw, membrane, eyeYellow, eyeRed, eyeViolet, heart };
+  return { meat, meatDark, meatPale, meatRot, fleshRancid, bone, boneDirty, maw, membrane, eyeYellow, eyeRed, eyeViolet, eyeCataract, heart };
 }
 
 // Заглушка культи (кровавый срез + торчащая сломанная кость)
@@ -135,6 +140,125 @@ function addClaws(hand, M, n, len = 0.09) {
     c.rotation.z = -a * 0.5;
     hand.add(c);
   }
+}
+
+// ============================================================================
+// 0) ЗОМБИ / УПЫРЬ — медленный гниющий труп с перекошенной шеей,
+// тянущейся рукой и волочащейся ногой
+// ============================================================================
+function buildZombie(M, tex) {
+  const root = new THREE.Group();
+  const j = {};
+  const mats = [M.meatRot, M.fleshRancid, M.meatDark, M.boneDirty, M.maw];
+
+  // Перекошенный таз
+  const pelvis = J(root, 0, 0.82, 0); j.pelvis = pelvis;
+  const pb = new THREE.Mesh(jitter(new THREE.SphereGeometry(0.18, 7, 5), 0.03), M.meatRot);
+  pb.scale.set(1.1, 0.85, 0.95); pb.rotation.z = -0.12; pelvis.add(pb);
+
+  // Искривленный сколиозный позвоночник
+  const spine = J(pelvis, 0, 0.08, -0.02); j.spine = spine;
+  const sp = new THREE.Mesh(jitter(new THREE.CapsuleGeometry(0.1, 0.18, 2, 6), 0.02), M.fleshRancid);
+  sp.position.y = 0.09; sp.rotation.z = 0.15; spine.add(sp);
+
+  // Грудь с обнаженными гнилыми ребрами
+  const chest = J(spine, 0, 0.22, 0); j.chest = chest;
+  const ch = new THREE.Mesh(jitter(new THREE.SphereGeometry(0.25, 8, 6), 0.04), M.meatRot);
+  ch.scale.set(1.05, 1.25, 0.9); ch.position.y = 0.1; chest.add(ch);
+
+  // Обломанные торчащие ребра
+  for (let i = 0; i < 4; i++) {
+    const t = new THREE.Mesh(new THREE.TorusGeometry(0.22 - i * 0.01, 0.016, 4, 10, Math.PI * 1.3), M.boneDirty);
+    t.rotation.set(Math.PI / 2 - 0.2, 0.35 + (i % 2) * 0.2, 0);
+    t.position.set(-0.04, 0.02 + i * 0.08, 0.06);
+    chest.add(t);
+  }
+
+  // Обнаженные гниющие внутренности
+  const guts = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5), M.fleshRancid);
+  guts.scale.set(1.2, 0.8, 1); guts.position.set(0.04, 0.04, 0.12); chest.add(guts);
+
+  // ========================================================================
+  // Перекошенная, сломанная шея и неестественно наклоненная голова
+  // ========================================================================
+  const neck = J(chest, 0.06, 0.32, 0.04); j.neck = neck;
+  neck.rotation.set(-0.25, 0.2, 0.52); // Сильный сломанный крен шеи вбок
+  const nk = new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.12, 2, 6), M.fleshRancid);
+  nk.position.y = 0.06; neck.add(nk);
+
+  const head = J(neck, 0, 0.13, 0.02); j.head = head;
+  head.rotation.set(0.22, -0.15, 0.35); // Перекошенная набок голова
+  const hd = new THREE.Mesh(jitter(new THREE.SphereGeometry(0.14, 7, 5), 0.025), M.meatRot);
+  hd.scale.set(0.9, 1.15, 1.0); head.add(hd);
+
+  // Глаза: слева — пустая темная впадина, справа — мутное бельмо мертвого глаза
+  const eyeLeftHole = new THREE.Mesh(new THREE.SphereGeometry(0.032, 5, 4), M.maw);
+  eyeLeftHole.position.set(-0.045, 0.025, 0.12); head.add(eyeLeftHole);
+
+  addEye(head, M, tex, M.eyeCataract, 0.045, 0.025, 0.12, 0.025, 0xd0e8b8, 0.12);
+
+  // Отвисшая, криво болтающаяся челюсть
+  const jaw = J(head, 0, -0.09, 0.06); j.jaw = jaw;
+  jaw.rotation.set(-0.4, 0.15, 0.18); // Челюсть отвисла вниз и вбок
+  const jm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.1), M.maw);
+  jm.position.set(0, -0.02, 0.02); jaw.add(jm);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 3 - 0.5) * 1.4;
+    const tooth = new THREE.Mesh(makeSpikeGeo(0.012, 0.045, 4), M.boneDirty);
+    tooth.position.set(Math.sin(a) * 0.04, -0.01, Math.cos(a) * 0.02 + 0.04);
+    tooth.rotation.x = 2.6; // остриё зубов наружу
+    jaw.add(tooth);
+  }
+
+  // ========================================================================
+  // Руки: Левая рука — вытянута ВПЕРЕД и тянется к жертве;
+  //       Правая рука — вывихнута, безжизненно висит и болтается
+  // ========================================================================
+  // Левая рука (тянущаяся вперед)
+  const lsh = J(chest, 0.26, 0.22, 0.04); j.lShoulder = lsh;
+  lsh.rotation.set(-1.25, 0.25, -0.15); // Вытянута прямо вперед!
+  const lup = seg(lsh, 0.32, 0.048, M.meatRot);
+  const lel = J(lup, 0, -0.32, 0); j.lElbow = lel;
+  lel.rotation.set(-0.25, 0, 0);
+  const llo = seg(lel, 0.32, 0.042, M.fleshRancid);
+  const lhand = J(llo, 0, -0.32, 0); j.lHand = lhand;
+  addClaws(lhand, M, 4, 0.08);
+
+  // Правая рука (свисшая, вывихнутая)
+  const rsh = J(chest, -0.26, 0.18, -0.02); j.rShoulder = rsh;
+  rsh.rotation.set(0.15, -0.15, 0.45); // Висит вниз и чуть вбок
+  const rup = seg(rsh, 0.30, 0.045, M.fleshRancid);
+  const rel = J(rup, 0, -0.30, 0); j.rElbow = rel;
+  rel.rotation.set(0.35, 0, 0);
+  const rlo = seg(rel, 0.30, 0.038, M.meatRot);
+  const rhand = J(rlo, 0, -0.30, 0); j.rHand = rhand;
+  addClaws(rhand, M, 3, 0.07);
+
+  // ========================================================================
+  // Ноги: Левая — опорная (шагает), Правая — поврежденная (волочится)
+  // ========================================================================
+  // Левая нога (рабочая)
+  const lhip = J(pelvis, 0.12, -0.05, 0); j.lHip = lhip;
+  const lth = seg(lhip, 0.38, 0.065, M.meatRot);
+  const lkn = J(lth, 0, -0.38, 0); j.lKnee = lkn;
+  const lsh2 = seg(lkn, 0.36, 0.052, M.fleshRancid);
+  const lft = J(lsh2, 0, -0.36, 0); j.lFoot = lft;
+  const lfoot = new THREE.Mesh(jitter(new THREE.SphereGeometry(0.08, 6, 4), 0.015), M.maw);
+  lfoot.scale.set(0.85, 0.45, 1.4); lfoot.position.set(0, -0.04, 0.05); lft.add(lfoot);
+
+  // Правая нога (вывернутая, поврежденная — волочится)
+  const rhip = J(pelvis, -0.12, -0.05, 0); j.rHip = rhip;
+  rhip.rotation.set(0.35, -0.25, 0.22); // Вывернута наружу и назад
+  const rth = seg(rhip, 0.38, 0.065, M.fleshRancid);
+  const rkn = J(rth, 0, -0.38, 0); j.rKnee = rkn;
+  rkn.rotation.set(0.1, 0, 0); // Почти не сгибается в колене
+  const rsh2 = seg(rkn, 0.36, 0.052, M.meatRot);
+  const rft = J(rsh2, 0, -0.36, 0); j.rFoot = rft;
+  rft.rotation.set(0.2, 0.35, -0.15); // Вывихнутая стопа
+  const rfoot = new THREE.Mesh(jitter(new THREE.SphereGeometry(0.08, 6, 4), 0.015), M.maw);
+  rfoot.scale.set(0.85, 0.45, 1.4); rfoot.position.set(0, -0.04, 0.05); rft.add(rfoot);
+
+  return { root, joints: j, mats };
 }
 
 // ============================================================================
@@ -540,7 +664,7 @@ function buildSpawn(M, tex) {
 // ============================================================================
 // Сборка
 // ============================================================================
-const BUILDERS = { minion: buildRunner, rogue: buildButcher, warrior: buildBrute, mage: buildSpawn };
+const BUILDERS = { zombie: buildZombie, minion: buildRunner, rogue: buildButcher, warrior: buildBrute, mage: buildSpawn };
 
 export function buildMonster(type, tex) {
   const M = makeMats(tex);
@@ -567,6 +691,7 @@ function kf(t, keys) {
 function toward(v, target, k) { return v + (target - v) * k; }
 
 const WALK = {
+  zombie:  { freq: 3.2, legAmp: 0.55, armAmp: 0.35, kneeAmp: 0.55, bob: 0.05, hunch: 0.35 },
   minion:  { freq: 6.8, legAmp: 0.65, armAmp: 0.45, kneeAmp: 0.75, bob: 0.04, hunch: 0.25 },
   rogue:   { freq: 5.6, legAmp: 0.55, armAmp: 0.35, kneeAmp: 0.65, bob: 0.03, hunch: 0.35 },
   warrior: { freq: 3.8, legAmp: 0.45, armAmp: 0.3,  kneeAmp: 0.55, bob: 0.03, hunch: 0.2 },
@@ -615,21 +740,45 @@ function poseWalk(e, dt, t, P, type) {
   const spasmAmp = e.spasm > 0 ? Math.sin(t * 36) * e.spasm : 0;
 
   // 1. Ноги — шаг вперед (+Z) и толчок назад (-Z)
-  if (j.lHip && !e.severed?.lLeg) {
-    j.lHip.rotation.x = -s * P.legAmp;
-    if (j.lKnee) j.lKnee.rotation.x = Math.max(0, -s) * P.kneeAmp + 0.15;
-  }
-  if (j.rHip && !e.severed?.rLeg) {
-    j.rHip.rotation.x = s * P.legAmp;
-    if (j.rKnee) j.rKnee.rotation.x = Math.max(0, s) * P.kneeAmp + 0.15;
-    if (type === 'rogue') {
-      j.rHip.rotation.x += 0.2;
-      if (j.rKnee) j.rKnee.rotation.x += 0.35;
+  if (type === 'zombie') {
+    // Вальяжная хромающая походка зомби:
+    // Левая нога делает тяжелый шаг, правая волочится сзади
+    if (j.lHip && !e.severed?.lLeg) {
+      j.lHip.rotation.x = -s * 0.65;
+      if (j.lKnee) j.lKnee.rotation.x = Math.max(0, -s) * 0.75 + 0.15;
+    }
+    if (j.rHip && !e.severed?.rLeg) {
+      j.rHip.rotation.set(0.32 + Math.max(0, s) * 0.18, -0.28, 0.22);
+      if (j.rKnee) j.rKnee.rotation.x = 0.08; // Волочится почти прямой
+    }
+  } else {
+    if (j.lHip && !e.severed?.lLeg) {
+      j.lHip.rotation.x = -s * P.legAmp;
+      if (j.lKnee) j.lKnee.rotation.x = Math.max(0, -s) * P.kneeAmp + 0.15;
+    }
+    if (j.rHip && !e.severed?.rLeg) {
+      j.rHip.rotation.x = s * P.legAmp;
+      if (j.rKnee) j.rKnee.rotation.x = Math.max(0, s) * P.kneeAmp + 0.15;
+      if (type === 'rogue') {
+        j.rHip.rotation.x += 0.2;
+        if (j.rKnee) j.rKnee.rotation.x += 0.35;
+      }
     }
   }
 
   // 2. Руки — вытянуты ВПЕРЁД (отрицательный pitch по оси X), тянутся к игроку
-  if (type === 'rogue') {
+  if (type === 'zombie') {
+    // Левая рука тянется прямо к игроку
+    if (j.lShoulder && !e.severed?.lArm) {
+      j.lShoulder.rotation.set(-1.25 + Math.sin(t * 5) * 0.1, 0.25 + s * 0.1, -0.15);
+      if (j.lElbow) j.lElbow.rotation.set(-0.25 + Math.cos(t * 6) * 0.12, 0, 0);
+    }
+    // Правая рука свисает вывихнутой и болтается маятником
+    if (j.rShoulder && !e.severed?.rArm) {
+      j.rShoulder.rotation.set(0.15 + c * 0.35, -0.15, 0.45 + s * 0.15);
+      if (j.rElbow) j.rElbow.rotation.set(0.35 + Math.sin(t * 4) * 0.1, 0, 0);
+    }
+  } else if (type === 'rogue') {
     if (j.lShoulder && !e.severed?.lArm) {
       j.lShoulder.rotation.set(-0.4 + s * 0.2, 0, -0.2);
       if (j.lElbow) j.lElbow.rotation.set(-0.45 + Math.max(0, s) * 0.25, 0, 0);
@@ -660,18 +809,37 @@ function poseWalk(e, dt, t, P, type) {
   }
 
   // 3. Торс и голова
-  if (j.spine) {
-    j.spine.rotation.x = P.hunch + s * 0.04 + spasmAmp * 0.25;
-    j.spine.rotation.y = s * 0.08;
-    j.spine.rotation.z = c * 0.06 + e.twist;
-    if (j.chest) j.chest.rotation.z = -c * 0.06 + spasmAmp * 0.3;
-  }
-  if (j.head && !e.severed?.head) {
-    j.head.rotation.x = -s * 0.05 + e.spasm * 0.2 * Math.sin(t * 26);
-    j.head.rotation.z = c * 0.08 + e.tilt;
-  }
-  if (j.pelvis) {
-    j.pelvis.position.y = (BASE_PELVIS_Y[type] || 0.85) + Math.abs(c) * P.bob + spasmAmp * 0.02;
+  if (type === 'zombie') {
+    if (j.spine) {
+      j.spine.rotation.set(0.35 + s * 0.05, s * 0.12, 0.15 + c * 0.18);
+    }
+    if (j.neck) {
+      j.neck.rotation.set(-0.25, 0.2, 0.52 + spasmAmp * 0.2);
+    }
+    if (j.head && !e.severed?.head) {
+      j.head.rotation.set(0.22 + s * 0.08, -0.15, 0.35 + Math.sin(t * 5) * 0.1);
+    }
+    if (j.jaw) {
+      j.jaw.rotation.set(-0.45 + Math.sin(t * 4) * 0.12, 0.15, 0.18);
+    }
+    if (j.pelvis) {
+      j.pelvis.position.y = 0.82 + Math.abs(c) * 0.05;
+      j.pelvis.rotation.z = -c * 0.12;
+    }
+  } else {
+    if (j.spine) {
+      j.spine.rotation.x = P.hunch + s * 0.04 + spasmAmp * 0.25;
+      j.spine.rotation.y = s * 0.08;
+      j.spine.rotation.z = c * 0.06 + e.twist;
+      if (j.chest) j.chest.rotation.z = -c * 0.06 + spasmAmp * 0.3;
+    }
+    if (j.head && !e.severed?.head) {
+      j.head.rotation.x = -s * 0.05 + e.spasm * 0.2 * Math.sin(t * 26);
+      j.head.rotation.z = c * 0.08 + e.tilt;
+    }
+    if (j.pelvis) {
+      j.pelvis.position.y = (BASE_PELVIS_Y[type] || 0.85) + Math.abs(c) * P.bob + spasmAmp * 0.02;
+    }
   }
 }
 
@@ -680,6 +848,19 @@ function poseIdle(e, dt, t, P, type) {
   e.phase += dt * P.freq * 0.3;
   const s = Math.sin(e.phase * 0.7), c = Math.cos(e.phase * 0.7);
   const j = e.j;
+
+  if (type === 'zombie') {
+    if (j.lHip && !e.severed?.lLeg) j.lHip.rotation.x = -0.1 + s * 0.03;
+    if (j.rHip && !e.severed?.rLeg) j.rHip.rotation.set(0.35, -0.25, 0.22);
+    if (j.lShoulder && !e.severed?.lArm) j.lShoulder.rotation.set(-1.2 + s * 0.05, 0.25, -0.15);
+    if (j.rShoulder && !e.severed?.rArm) j.rShoulder.rotation.set(0.15 + c * 0.08, -0.15, 0.45);
+    if (j.neck) j.neck.rotation.set(-0.25, 0.2, 0.52);
+    if (j.head && !e.severed?.head) j.head.rotation.set(0.22, -0.15, 0.35 + Math.sin(t * 1.5) * 0.05);
+    if (j.jaw) j.jaw.rotation.set(-0.4 + Math.sin(t * 2) * 0.08, 0.15, 0.18);
+    if (j.spine) j.spine.rotation.set(0.35, 0, 0.15 + s * 0.04);
+    if (j.pelvis) j.pelvis.position.y = 0.82;
+    return;
+  }
 
   if (j.lHip && !e.severed?.lLeg) {
     j.lHip.rotation.x = toward(j.lHip.rotation.x, -0.1 + s * 0.05, 0.1);
@@ -721,7 +902,21 @@ function poseAttack(e, t, P, type) {
   const p = Math.min(1, e.animT / e.animDur);
   const j = e.j;
 
-  if (type === 'minion') {
+  if (type === 'zombie') {
+    // Зомби делает яростный выпад тянущейся рукой и пытается вцепиться челюстью
+    const lunge = kf(p, [[0, -1.2], [0.35, -1.55], [0.55, -0.9], [1, -1.2]]);
+    if (j.lShoulder && !e.severed?.lArm) {
+      j.lShoulder.rotation.set(lunge, 0.2, -0.2);
+      if (j.lElbow) j.lElbow.rotation.set(Math.abs(lunge) * 0.4 - 0.5, 0, 0);
+    }
+    if (j.rShoulder && !e.severed?.rArm) {
+      j.rShoulder.rotation.set(0.2, -0.2, 0.5);
+    }
+    const bite = kf(p, [[0, -0.4], [0.4, -0.85], [0.6, -0.2], [1, -0.4]]);
+    if (j.jaw) j.jaw.rotation.set(bite, 0.15, 0.18);
+    if (j.neck) j.neck.rotation.set(-0.35, 0.2, 0.52);
+    if (j.spine) j.spine.rotation.set(0.45 + kf(p, [[0, 0], [0.4, 0.35], [1, 0]]), 0, 0.15);
+  } else if (type === 'minion') {
     const k = kf(p, [[0, -0.4], [0.35, -0.1], [0.55, -1.35], [1, -0.4]]);
     if (j.lShoulder && !e.severed?.lArm) {
       j.lShoulder.rotation.set(k, 0.1, -0.15);

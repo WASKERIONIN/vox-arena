@@ -242,22 +242,29 @@ export class Player {
       input.keys.delete('KeyV');
     }
 
-    // --- Движение игрока ---
-    const sprint = input.keys.has('ShiftLeft') || input.keys.has('ShiftRight');
-    const maxSpeed = sprint ? 9.2 : 6.4;
+    // --- Движение игрока: 360-градусный стрейф по всем направлениям + спринт на Shift ---
+    const isMoving = input.keys.has('KeyW') || input.keys.has('KeyS') || input.keys.has('KeyA') || input.keys.has('KeyD');
+    const sprint = (input.keys.has('ShiftLeft') || input.keys.has('ShiftRight')) && isMoving;
+    const baseSpeed = 6.4;
+    const maxSpeed = sprint ? 10.6 : baseSpeed;
+
     this.camera.getWorldDirection(_fwd); _fwd.y = 0; _fwd.normalize();
     _right.crossVectors(_fwd, new THREE.Vector3(0, 1, 0));
+
     let ix = 0, iz = 0;
     if (input.keys.has('KeyW')) iz += 1;
     if (input.keys.has('KeyS')) iz -= 1;
     if (input.keys.has('KeyD')) ix += 1;
     if (input.keys.has('KeyA')) ix -= 1;
+
+    // Вектор желаемого движения: полный 360-градусный стрейф во всех направлениях
     _wish.set(0, 0, 0).addScaledVector(_fwd, iz).addScaledVector(_right, ix);
     if (_wish.lengthSq() > 0) _wish.normalize();
 
-    const accel = this.onGround ? 52 : 10;
+    const accel = this.onGround ? (sprint ? 68 : 52) : 12;
     this.vel.x += _wish.x * accel * dt;
     this.vel.z += _wish.z * accel * dt;
+
     if (this.onGround) {
       const fr = Math.max(0, 1 - 9 * dt);
       this.vel.x *= fr; this.vel.z *= fr;
@@ -284,12 +291,17 @@ export class Player {
     } else if (this.pos.y > g + 0.05) this.onGround = false;
     if (this.pos.y < -2) { this.pos.y = 0; this.vel.y = 0; }
 
-    // --- Покачивание ---
+    // --- Покачивание и динамический спринт ---
     const speedXZ = Math.hypot(this.vel.x, this.vel.z);
-    if (this.onGround && speedXZ > 0.5) this.bobPhase += dt * speedXZ * 1.55;
+    const sprintFrac = clamp((speedXZ - baseSpeed) / (maxSpeed - baseSpeed + 0.01), 0, 1);
+
+    if (this.onGround && speedXZ > 0.5) {
+      const bobFreq = sprint ? 1.85 : 1.55;
+      this.bobPhase += dt * speedXZ * bobFreq;
+    }
     this.bobAmt += ((this.onGround && speedXZ > 0.5 ? 1 : 0) - this.bobAmt) * Math.min(1, dt * 8);
-    const bobY = this.bobEnabled ? Math.sin(this.bobPhase * 2) * 0.028 * this.bobAmt : 0;
-    const bobX = this.bobEnabled ? Math.cos(this.bobPhase) * 0.017 * this.bobAmt : 0;
+    const bobY = this.bobEnabled ? Math.sin(this.bobPhase * 2) * (0.028 + sprintFrac * 0.012) * this.bobAmt : 0;
+    const bobX = this.bobEnabled ? Math.cos(this.bobPhase) * (0.017 + sprintFrac * 0.008) * this.bobAmt : 0;
 
     // --- Тряска ---
     if (this.shake > 0) {
@@ -299,11 +311,12 @@ export class Player {
     const shX = (Math.random() - 0.5) * this.shake * 0.5;
     const shY = (Math.random() - 0.5) * this.shake * 0.5;
 
-    // --- Камера ---
+    // --- Камера: динамический крен при стрейфах ---
     this.recoilVel += (-this.recoilPitch * 130 - this.recoilVel * 13) * dt;
     this.recoilPitch += this.recoilVel * dt;
     this.camera.rotation.order = 'YXZ';
-    this.camera.rotation.set(this.pitch + this.recoilPitch, this.yaw, -ix * 0.014);
+    const strafeBank = -ix * (sprint ? 0.026 : 0.018);
+    this.camera.rotation.set(this.pitch + this.recoilPitch, this.yaw, strafeBank);
     this.camera.position.set(this.pos.x + bobX + shX, this.pos.y + this.eyeH + bobY + shY, this.pos.z);
 
     // --- Анимация смены оружия ---

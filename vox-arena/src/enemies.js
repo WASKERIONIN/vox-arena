@@ -3,8 +3,10 @@ import { rand, pick } from './config.js';
 import { buildMonster, poseMonster, createStumpCap } from './monsters.js';
 import { Ragdoll, SeveredLimbProp } from './ragdoll.js';
 
-// 4 типа тварей: уникальные характеристики и скорости
+// 5 типов тварей: уникальные характеристики и скорости
 export const TYPES = {
+  zombie:  { hp: 75,  speed: 1.85, dmg: 14, score: 140, radius: 0.44, height: 1.80, baseY: 0,
+             atkDur: 0.9, dieDur: 1.6, range: 1.9, cd: [0.9, 1.5], maxPoise: 70, label: 'ЗОМБИ' },
   minion:  { hp: 36,  speed: 4.2, dmg: 8,  score: 100, radius: 0.4,  height: 1.85, baseY: 0,
              atkDur: 0.6, dieDur: 1.5, range: 1.9, cd: [0.7, 1.2], maxPoise: 42, label: 'СКОРОХОД' },
   rogue:   { hp: 30,  speed: 3.8, dmg: 10, score: 120, radius: 0.42, height: 1.55, baseY: 0,
@@ -226,7 +228,7 @@ export class EnemyManager {
         if (this.hooks.hud) this.hooks.hud.styleEvent('ДЕКАПИТАЦИЯ! +200');
         e.hp = 0;
 
-        const canRampage = (e.typeName === 'minion' || e.typeName === 'rogue') && (Math.random() < 0.45);
+        const canRampage = (e.typeName === 'minion' || e.typeName === 'rogue' || e.typeName === 'zombie') && (Math.random() < 0.45);
         if (canRampage) {
           e.state = 'headless_rampage';
           e.rampageT = rand(1.3, 1.9);

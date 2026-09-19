@@ -149,6 +149,7 @@
   <!-- Панель управления песочницей и превью монстров -->
   <div id="sandbox-panel" class="hidden">
     <span style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--amber);margin-right:2px;">ТЕСТ:</span>
+    <button class="btn small sb-btn" id="sb-zombie" title="Горячая клавиша: 4"><kbd>4</kbd> ЗОМБИ</button>
     <button class="btn small sb-btn" id="sb-minion" title="Горячая клавиша: 5"><kbd>5</kbd> СКОРОХОД</button>
     <button class="btn small sb-btn" id="sb-rogue" title="Горячая клавиша: 6"><kbd>6</kbd> РЕЗАК</button>
     <button class="btn small sb-btn" id="sb-warrior" title="Горячая клавиша: 7"><kbd>7</kbd> КЛЕЩ</button>
@@ -257,22 +258,23 @@
   <div class="panel">
     <h2>УПРАВЛЕНИЕ И МЕХАНИКИ</h2>
     <div class="help-cols">
-      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — движение</div>
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — движение и 360° стрейфы</div>
       <div><kbd>МЫШЬ</kbd> — прицеливание</div>
       <div><kbd>ЛКМ</kbd> — огонь / выстрел</div>
       <div><kbd>1</kbd> / <kbd>2</kbd> / <kbd>Q</kbd> / <kbd>КОЛЕСО</kbd> — смена оружия</div>
       <div><kbd>F</kbd> / <kbd>ПКМ</kbd> / <kbd>V</kbd> — боевой пинок (нога)</div>
       <div><kbd>T</kbd> / <kbd>L</kbd> — тактический фонарь</div>
       <div><kbd>R</kbd> — перезарядка</div>
-      <div><kbd>SHIFT</kbd> — спринт · <kbd>ПРОБЕЛ</kbd> — прыжок</div>
-      <div><kbd>5</kbd> / <kbd>6</kbd> / <kbd>7</kbd> / <kbd>8</kbd> — спавн тварей (песочница)</div>
+      <div><kbd>SHIFT</kbd> — спринт (все 8 направлений) · <kbd>ПРОБЕЛ</kbd> — прыжок</div>
+      <div><kbd>4</kbd> / <kbd>5</kbd> / <kbd>6</kbd> / <kbd>7</kbd> / <kbd>8</kbd> — спавн тварей (песочница)</div>
       <div><kbd>9</kbd> — переключить ИИ (Вкл / Выкл)</div>
-      <div><kbd>0</kbd> — очистить арену</div>
+      <div><kbd>0</kbd> — очистить / сбросить арену</div>
     </div>
     <p style="font-size:13px;line-height:1.7;color:#c9b8a0;margin-top:14px">
       <b>ОБРЕЗ «ПАЛАЧ»:</b> Выпускает смертоносный веер картечи. В упор сбивает с ног и отрывает конечности. Переломная перезарядка.<br>
-      <b>БОЕВОЙ ПИНОК:</b> Опрокидывает монстров на пол, прерывает атаки и швыряет отстреленные черепа и конечности как снаряды.<br>
-      <b>ПЕСОЧНИЦА / ПРЕВЬЮ АНИМАЦИЙ:</b> Спавните любых тварей с выключенным интеллектом (<kbd>9</kbd>), подходите вплотную, изучайте анимации, бейте пинком и отстреливайте отдельные конечности.
+      <b>БОЕВОЙ ПИНОК:</b> Опрокидывает монстров на пол, прерывает атаки, швыряет отстреленные черепа и толкает ящики словно таран.<br>
+      <b>ИНТЕРАКТИВНЫЕ ЯЩИКИ:</b> Физические ящики сдвигаются от выстрелов, переворачиваются от картечи и давят тварей при ударе.<br>
+      <b>МЕДЛЕННЫЙ ЗОМБИ:</b> Гниющий упырь с перекошенной сломанной шеей, жадно тянущейся вперед рукой и волочащейся ногой.
     </p>
     <div style="margin-top:14px"><button class="btn small" id="btn-help-close">НАЗАД</button></div>
   </div>

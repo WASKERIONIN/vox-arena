@@ -36,13 +36,14 @@ export class Waves {
   _composition(n) {
     const q = [];
     const push = (t, c) => { for (let i = 0; i < c; i++) q.push(t); };
-    push('minion', 4 + n * 2);
+    push('zombie', 3 + Math.floor(n * 1.5));
+    push('minion', 2 + n * 2);
     if (n >= 2) push('rogue', 1 + Math.floor(n * 0.8));
     if (n >= 3) push('mage', Math.floor((n - 1) / 2));
     if (n >= 4) push('warrior', Math.floor(n / 2) - 1);
     // перемешиваем
     q.sort(() => Math.random() - 0.5);
-    const cap = 30;
+    const cap = 35;
     return q.slice(0, cap);
   }
 

@@ -24,7 +24,7 @@ export class HUD {
       'death-stats', 'loading', 'fallback-note', 'settings-rows', 'fade',
       'map-desc', 'map-arena', 'map-catacombs',
       'mode-desc', 'mode-waves', 'mode-sandbox',
-      'sandbox-panel', 'sb-minion', 'sb-rogue', 'sb-warrior', 'sb-mage', 'sb-ai-toggle', 'sb-clear'
+      'sandbox-panel', 'sb-zombie', 'sb-minion', 'sb-rogue', 'sb-warrior', 'sb-mage', 'sb-ai-toggle', 'sb-clear'
     ]) {
       this.els[id] = $(id);
     }
@@ -183,6 +183,7 @@ export class HUD {
     });
 
     // Кнопки песочницы
+    click('sb-zombie', () => this.onSpawn && this.onSpawn('zombie'));
     click('sb-minion', () => this.onSpawn && this.onSpawn('minion'));
     click('sb-rogue', () => this.onSpawn && this.onSpawn('rogue'));
     click('sb-warrior', () => this.onSpawn && this.onSpawn('warrior'));

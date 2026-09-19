@@ -265,6 +265,7 @@ window.addEventListener('keydown', e => {
 
   // Горячие клавиши спавнера и песочницы
   if (state === 'playing') {
+    if (e.code === 'Digit4' || e.code === 'Numpad4') spawnSandboxMonster('zombie');
     if (e.code === 'Digit5' || e.code === 'Numpad5') spawnSandboxMonster('minion');
     if (e.code === 'Digit6' || e.code === 'Numpad6') spawnSandboxMonster('rogue');
     if (e.code === 'Digit7' || e.code === 'Numpad7') spawnSandboxMonster('warrior');
@@ -313,10 +314,10 @@ function startRun(selectedMap = currentMapId, mode = 'waves') {
     waves.state = 'idle';
     hud.countdown(0, 0);
     hud.setSandboxAIToggle(hud.aiEnabledInSandbox);
-    // Спавним тестового монстра прямо на центральной платформе перед игроком
-    enemies.spawn('minion', 0, 0, 1, !hud.aiEnabledInSandbox);
-    hud.banner('ПЕСОЧНИЦА АКТИВИРОВАНА', 'КЛАВИШИ 5-8: СПАВН · 9: ИИ ВКЛ/ВЫКЛ · 0: ОЧИСТИТЬ');
-    hud.hint('Клавиши 5-8 — спавн тварей · 9 — вкл/выкл ИИ · 0 — очистить · 1/2 — оружие · F — пинок');
+    // Спавним тестового зомби прямо на центральной платформе перед игроком
+    enemies.spawn('zombie', 0, 0, 1, !hud.aiEnabledInSandbox);
+    hud.banner('ПЕСОЧНИЦА АКТИВИРОВАНА', 'КЛАВИШИ 4-8: СПАВН · 9: ИИ ВКЛ/ВЫКЛ · 0: ОЧИСТИТЬ');
+    hud.hint('Клавиши 4-8 — спавн тварей · 9 — вкл/выкл ИИ · 0 — очистить · 1/2 — оружие · F — пинок');
   }
 
   player.rifleAssets.group.visible = true;
